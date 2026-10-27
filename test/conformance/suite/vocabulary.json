@@ -1,0 +1,142 @@
+{
+  "about": "The neutral names cases use. A runner maps each to its own language; it adds no rule of its own.",
+  "key": {
+    "id": "mfxk_C0NF0RMANCE1",
+    "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "note": "The test key from the API description's signing test vector. Build the client with it."
+  },
+  "client": {
+    "base_url": "the line the fake hub prints: http://127.0.0.1:<port>/v1",
+    "waits": "configure the client so a retry does not actually sleep (a Retry-After is honoured as a decision, not as wall time)"
+  },
+  "ops": {
+    "signing.sign": {
+      "args": [
+        "timestamp",
+        "nonce",
+        "method",
+        "path_with_query",
+        "body"
+      ],
+      "returns": [
+        "signature"
+      ],
+      "note": "sign the message with the test key; no request is made"
+    },
+    "terminals.get": {
+      "args": [
+        "terminal_id"
+      ],
+      "returns": [
+        "id",
+        "state"
+      ]
+    },
+    "terminals.page": {
+      "args": [
+        "cursor?",
+        "limit?"
+      ],
+      "returns": [
+        "count",
+        "next_cursor"
+      ],
+      "note": "one page; count is the number of items in it"
+    },
+    "terminals.list": {
+      "args": [],
+      "returns": [
+        "ids"
+      ],
+      "note": "every terminal, following the cursor; ids in order"
+    },
+    "terminals.create": {
+      "args": [
+        "farm_id",
+        "broker_id",
+        "server_id",
+        "idempotency_key"
+      ],
+      "returns": [
+        "id",
+        "state"
+      ]
+    },
+    "execution.place_order": {
+      "args": [
+        "terminal_id",
+        "symbol",
+        "side",
+        "volume",
+        "idempotency_key"
+      ],
+      "returns": [
+        "ok",
+        "state",
+        "command_id",
+        "duplicate",
+        "retryable"
+      ],
+      "note": "never raises"
+    },
+    "catalog.quote": {
+      "args": [
+        "broker_id",
+        "symbol"
+      ],
+      "returns": [
+        "bid",
+        "ask",
+        "age_s",
+        "state"
+      ]
+    },
+    "stream.read": {
+      "args": [
+        "channels",
+        "count"
+      ],
+      "returns": [
+        "seqs",
+        "types",
+        "dropped",
+        "reconnects",
+        "lifetime_reconnects",
+        "slow_consumer_drops",
+        "resyncs",
+        "refused"
+      ],
+      "note": "open the stream against the fake hub (reconnecting allowed, no real wait between attempts), subscribe each channel in order, read until count data messages have arrived, then close. seqs and types are those messages in order; the rest are the stream's own counters: messages a seq gap proves were missed, connections after the first, 4009 and 4008 closes, resyncs, and channels the platform refused"
+    }
+  },
+  "markers": {
+    "$decimal": "an exact decimal, given as a string: pass the language's decimal type (Decimal, decimal, BigDecimal) or the string",
+    "$float": "a binary floating-point number: pass the language's float or double, to prove it is refused",
+    "$fixture": "already expanded by the fake hub before a runner sees the case"
+  },
+  "observe": {
+    "returns": "the call returned; each named field equals the value (a $decimal compares as a decimal)",
+    "raises": "the call raised (or rejected with) the named error kind; fields such as code and status equal the values",
+    "refuses": "the call refused before sending anything: invalid_argument is the language's argument or type error"
+  },
+  "errors": [
+    "ApiError",
+    "ValidationError",
+    "AuthError",
+    "ForbiddenError",
+    "TenantDisabledError",
+    "TenantSuspendedError",
+    "MaintenanceError",
+    "NotFoundError",
+    "ConflictError",
+    "StateError",
+    "PlacementError",
+    "UnsupportedBrokerError",
+    "RateLimitError",
+    "UpstreamError",
+    "DependencyUnavailableError",
+    "InternalError",
+    "TransportError",
+    "Timeout"
+  ]
+}

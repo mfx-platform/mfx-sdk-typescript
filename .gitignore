@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+*.pem
+*.key
+tc-manifest.json
+reports/
+.DS_Store
+.idea/
+.vscode/
+
+__pycache__/
+*.pyc
+.hub/

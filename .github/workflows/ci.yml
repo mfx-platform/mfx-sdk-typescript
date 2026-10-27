@@ -1,0 +1,97 @@
+# Every push and pull request: formatting, lint, strict types and the unit tests on Linux, Windows
+# and macOS with Node.js 22 and 24, the shared SDK test suite, the generated types checked against
+# the API description, and nothing internal in what would be published.
+#
+# Actions are pinned to a full commit SHA, with the release it is in the trailing comment, so a
+# moved tag cannot change what runs here. Dependabot proposes the updates.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install from the lock file
+        run: npm ci
+      - name: Formatting and lint
+        run: |
+          npm run format
+          npm run lint
+      - name: Strict types
+        run: npm run typecheck
+      - name: Tests, with 100% coverage
+        run: npm test
+      - name: The package builds
+        run: npm run build
+
+  conformance:
+    name: shared SDK test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - name: Install from the lock file
+        run: npm ci
+      - name: The fake hub's Python environment, from hash-pinned requirements
+        run: |
+          uv venv --python 3.12 .hub
+          uv pip install --python .hub --require-hashes -r test/conformance/hub-requirements.txt
+      - name: Every case of the suite
+        env:
+          MFX_SUITE_PYTHON: .hub/bin/python
+        run: npm run test:conformance
+
+  package:
+    name: types match the API description, and nothing internal is published
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install from the lock file
+        run: npm ci
+      - name: The generated types match spec/openapi.yaml
+        run: npm run check:gen
+      - name: The repository
+        run: node tools/check-public.mjs --tree .
+      - name: What npm would publish
+        run: |
+          npm run build
+          node tools/check-public.mjs --pack
+      - name: Dependencies have no known advisories
+        run: npm audit --omit=dev --audit-level=low

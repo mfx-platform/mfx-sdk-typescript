@@ -1,0 +1,92 @@
+# Publish a release of @mfxhub/sdk to npm when a version tag (v1.2.3) is pushed.
+#
+# No npm token exists. npm's trusted publishing accepts a short-lived token that GitHub issues to
+# this workflow, in the `npm` environment, and to nothing else, and npm records signed provenance
+# saying where the package was built. The environment only accepts version tags and waits for a
+# maintainer's approval, so nothing reaches npm without a person saying so.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: The tag names the version being built
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json's version ${version}"
+            exit 1
+          fi
+      - name: Install from the lock file
+        run: npm ci
+      - name: Tests, with 100% coverage
+        run: npm test
+      - name: Build the package
+        run: |
+          npm run build
+          node tools/check-public.mjs --pack
+          npm pack
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package
+          path: "*.tgz"
+          if-no-files-found: error
+
+  npm:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@mfxhub/sdk
+    permissions:
+      # The token npm exchanges for this one publish, and the provenance statement. It is the
+      # whole credential.
+      id-token: write
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: package
+      - name: Trusted publishing needs npm 11.5.1 or later
+        run: |
+          npm --version
+          node -e "const [a,b,c]=process.argv[1].split('.').map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)" "$(npm --version)"
+      - name: Publish, with provenance
+        run: npm publish ./*.tgz --provenance --access public
+
+  github-release:
+    needs: npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: package
+      - name: The release, with this version's changelog and its package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="## ${version}" '$0 == v {on=1; next} /^## / && on {exit} on' CHANGELOG.md > notes.md
+          gh release create "${GITHUB_REF_NAME}" ./*.tgz --title "${GITHUB_REF_NAME}" --notes-file notes.md --verify-tag

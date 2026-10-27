@@ -1,0 +1,57 @@
+[
+  {
+    "id": "decimals.volume_sent_as_string",
+    "rule": "A volume goes on the wire as a decimal string, never a JSON number",
+    "source": "Decimals",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$decimal": "0.01"}, "idempotency_key": "case-decimals-1"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders",
+                   "json_contains": {"symbol": "EURUSD", "side": "buy", "volume": "0.01"}},
+        "answer": {"status": 202, "body": {"$fixture": "accepted"}}
+      }
+    ],
+    "observe": {"returns": {"state": "ACCEPTED"}}
+  },
+  {
+    "id": "decimals.exponent_written_plainly",
+    "rule": "A decimal given with an exponent is sent as plain digits (1E+3 is \"1000\")",
+    "source": "Decimals",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "XAUUSD", "side": "buy",
+      "volume": {"$decimal": "1E+3"}, "idempotency_key": "case-decimals-2"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders",
+                   "json_contains": {"volume": "1000"}},
+        "answer": {"status": 202, "body": {"$fixture": "accepted"}}
+      }
+    ],
+    "observe": {"returns": {"state": "ACCEPTED"}}
+  },
+  {
+    "id": "decimals.float_refused",
+    "rule": "A binary floating-point volume is refused before anything is sent",
+    "source": "Decimals",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$float": 0.21000000000000002}, "idempotency_key": "case-decimals-3"}},
+    "server": [],
+    "observe": {"refuses": "invalid_argument"}
+  },
+  {
+    "id": "decimals.price_read_exactly",
+    "rule": "A price read from the API keeps every digit it was sent with",
+    "source": "Decimals",
+    "call": {"op": "catalog.quote", "args": {"broker_id": "2c2d3e4f-5a6b-7c8d-9e0f-102030405060", "symbol": "EURUSD"}},
+    "server": [
+      {
+        "expect": {"method": "GET", "path": "/v1/brokers/2c2d3e4f-5a6b-7c8d-9e0f-102030405060/symbols/EURUSD/quote"},
+        "answer": {"status": 200, "body": {"$fixture": "quote"}}
+      }
+    ],
+    "observe": {"returns": {"bid": {"$decimal": "1.12129"}, "ask": {"$decimal": "1.12181"}}}
+  }
+]

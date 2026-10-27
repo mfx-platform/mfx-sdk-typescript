@@ -1,0 +1,24 @@
+# Weekly update proposals for the npm dependencies (from package-lock.json) and the pinned actions.
+# This repository is published from the one the SDK is developed in, so a proposal here is applied
+# there and arrives with the next release; the pull request is then closed with a link to it.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    # A new major version of an action changes its inputs or its runtime: taken on purpose, with
+    # the workflows checked, not merged as a routine update.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

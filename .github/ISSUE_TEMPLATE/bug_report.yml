@@ -1,0 +1,42 @@
+name: Bug report
+description: The SDK did something it should not, or did not do something it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Leave out API keys, private keys, broker logins, passwords and anything else that
+        identifies an account. A security problem goes to the Security tab, not here.
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK version
+      description: "`npm ls @mfxhub/sdk`"
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version and operating system
+      placeholder: Node.js 24.11.0 on Ubuntu 24.04
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: The smallest code that shows it
+      render: typescript
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or stack trace
+      description: The SDK masks secrets in its own output; check anything else you paste.
+      render: text

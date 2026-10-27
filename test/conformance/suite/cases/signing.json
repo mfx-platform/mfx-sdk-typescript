@@ -1,0 +1,66 @@
+[
+  {
+    "id": "signing.test_vector",
+    "rule": "The signature over the published test vector is reproduced byte for byte",
+    "source": "Request signing",
+    "call": {
+      "op": "signing.sign",
+      "args": {
+        "timestamp": "1790000000000",
+        "nonce": "3f0c9a4e5b7d4c1e9a2b6d8f0a1c2e3f",
+        "method": "POST",
+        "path_with_query": "/v1/terminals?dry_run=false",
+        "body": "{\"farm_id\":\"00000000-0000-0000-0000-000000000001\"}"
+      }
+    },
+    "observe": {
+      "returns": {
+        "signature": "OLOeJhRskf6kvodIyvrrpI/Hwlg3MXn//TTc64zpcl0qACk3BOhNfMV8yrVthZUdUXlOCntJAIrfgHTNK6faDg=="
+      }
+    }
+  },
+  {
+    "id": "signing.every_request_signed",
+    "rule": "A read carries the key id, a fresh timestamp and nonce, and a signature that verifies",
+    "source": "Request signing",
+    "call": {"op": "terminals.get", "args": {"terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"}},
+    "server": [
+      {
+        "expect": {"method": "GET", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001", "signed": true},
+        "answer": {"status": 200, "body": {"$fixture": "terminal"}}
+      }
+    ],
+    "observe": {"returns": {"id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "state": "ACTIVE"}}
+  },
+  {
+    "id": "signing.query_is_signed",
+    "rule": "The path a signature covers includes the query string exactly as sent",
+    "source": "Request signing",
+    "call": {"op": "terminals.page", "args": {"limit": 2, "cursor": "c-2"}},
+    "server": [
+      {
+        "expect": {"method": "GET", "path": "/v1/terminals", "query": {"limit": "2", "cursor": "c-2"}, "signed": true},
+        "answer": {"status": 200, "body": {"items": [], "next_cursor": null, "returned": 0}}
+      }
+    ],
+    "observe": {"returns": {"count": 0, "next_cursor": null}}
+  },
+  {
+    "id": "signing.retry_signed_again",
+    "rule": "A read retried after a 429 is signed again, with a new nonce",
+    "source": "Request signing",
+    "call": {"op": "terminals.get", "args": {"terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"}},
+    "server": [
+      {
+        "expect": {"method": "GET", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"},
+        "answer": {"status": 429, "headers": {"Retry-After": "0"},
+                   "body": {"error": {"code": "rate_limited", "message": "slow down"}}}
+      },
+      {
+        "expect": {"method": "GET", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"},
+        "answer": {"status": 200, "body": {"$fixture": "terminal"}}
+      }
+    ],
+    "observe": {"returns": {"id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"}}
+  }
+]

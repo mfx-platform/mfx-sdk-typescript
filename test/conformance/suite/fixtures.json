@@ -1,0 +1,29 @@
+{
+  "terminal": {
+    "id": "0191f0c2-aaaa-7bbb-8ccc-000000000001",
+    "farm": {"id": "1c2d3e4f-5a6b-7c8d-9e0f-102030405060", "label": "test-farm"},
+    "broker": {"id": "2c2d3e4f-5a6b-7c8d-9e0f-102030405060", "label": "Test Broker"},
+    "server": {"id": "3c2d3e4f-5a6b-7c8d-9e0f-102030405060", "label": "TestBroker-Demo"},
+    "streaming": false,
+    "execution": true,
+    "state": "ACTIVE",
+    "instruments": ["EURUSD"],
+    "created_at": "2026-10-23T09:00:00Z"
+  },
+  "accepted": {
+    "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
+    "state": "ACCEPTED",
+    "duplicate": false
+  },
+  "quote": {
+    "symbol": "EURUSD",
+    "server_id": "3c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+    "account_type": "standard",
+    "bid": "1.12129",
+    "ask": "1.12181",
+    "tick_time": "2026-10-23T21:05:00Z",
+    "broker_time": "2026-10-24T00:05:00.000",
+    "age_s": 1.5,
+    "state": "open"
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "name": "@mfxhub/sdk",
+  "version": "0.1.0",
+  "description": "Typed TypeScript client for the MFX Hub API: hosted trading terminals, market data, execution and a live event stream",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "mfx",
+    "mfx-hub",
+    "trading",
+    "market-data",
+    "trading-api"
+  ],
+  "homepage": "https://docs.mfxhub.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mfx-platform/mfx-sdk-typescript.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mfx-platform/mfx-sdk-typescript/issues"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "test": "vitest run --coverage",
+    "test:conformance": "vitest run --config vitest.conformance.config.ts",
+    "gen": "openapi-typescript spec/openapi.yaml -o src/generated/api.ts && prettier --write src/generated/api.ts",
+    "check:gen": "node tools/check-generated.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "@vitest/coverage-v8": "^5.0.5",
+    "eslint": "^9.39.5",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  }
+}

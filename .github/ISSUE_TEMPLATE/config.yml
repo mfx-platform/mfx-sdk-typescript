@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/mfx-platform/mfx-sdk-typescript/security/advisories/new
+    about: Privately, never in a public issue. Or write to security@mfxhub.com.
+  - name: A question about your account, a terminal or the API
+    url: https://docs.mfxhub.com
+    about: The documentation first; then support@mfxhub.com.

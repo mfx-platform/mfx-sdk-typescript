@@ -1,0 +1,51 @@
+[
+  {
+    "id": "idempotency.key_sent_as_header",
+    "rule": "A write sends the idempotency key it was given, as the Idempotency-Key header",
+    "source": "Idempotency",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$decimal": "0.01"}, "idempotency_key": "case-key-7f3a"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders",
+                   "headers": {"Idempotency-Key": "case-key-7f3a"}},
+        "answer": {"status": 202, "body": {"$fixture": "accepted"}}
+      }
+    ],
+    "observe": {"returns": {"state": "ACCEPTED", "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001"}}
+  },
+  {
+    "id": "idempotency.write_never_retried",
+    "rule": "A write that fails is not sent again: one request, whatever the answer",
+    "source": "Idempotency",
+    "call": {"op": "terminals.create", "args": {
+      "farm_id": "1c2d3e4f-5a6b-7c8d-9e0f-102030405060", "broker_id": "2c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+      "server_id": "3c2d3e4f-5a6b-7c8d-9e0f-102030405060", "idempotency_key": "case-key-create-1"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals", "headers": {"Idempotency-Key": "case-key-create-1"}},
+        "answer": {"status": 429, "headers": {"Retry-After": "0"},
+                   "body": {"error": {"code": "rate_limited", "message": "slow down"}}}
+      }
+    ],
+    "observe": {"raises": "RateLimitError"}
+  },
+  {
+    "id": "idempotency.duplicate_is_the_original",
+    "rule": "An answer that says duplicate is read as the original command, not a second one",
+    "source": "Idempotency",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$decimal": "0.01"}, "idempotency_key": "case-key-dup"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders",
+                   "headers": {"Idempotency-Key": "case-key-dup"}},
+        "answer": {"status": 202, "body": {"command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
+                                            "state": "SUCCEEDED", "duplicate": true}}
+      }
+    ],
+    "observe": {"returns": {"duplicate": true, "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001"}}
+  }
+]

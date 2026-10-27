@@ -1,0 +1,64 @@
+[
+  {
+    "id": "execution.refusal_is_a_result",
+    "rule": "An order the platform refuses comes back as a result that is not ok, never as an error",
+    "source": "Execution",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$decimal": "0.01"}, "idempotency_key": "case-exec-1"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders"},
+        "answer": {"status": 409, "body": {"error": {"code": "state_error", "message": "the terminal is draining"}}}
+      }
+    ],
+    "observe": {"returns": {"ok": false}}
+  },
+  {
+    "id": "execution.rate_limit_is_a_result",
+    "rule": "A rate-limited order comes back as a result that is not ok, and it is not sent twice",
+    "source": "Execution",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$decimal": "0.01"}, "idempotency_key": "case-exec-2"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders"},
+        "answer": {"status": 429, "headers": {"Retry-After": "3"},
+                   "body": {"error": {"code": "rate_limited", "message": "slow down"}}}
+      }
+    ],
+    "observe": {"returns": {"ok": false}}
+  },
+  {
+    "id": "execution.dropped_connection_is_a_result",
+    "rule": "An order whose connection drops comes back as a result that is not ok and must not be sent again under a new key",
+    "source": "Execution",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$decimal": "0.01"}, "idempotency_key": "case-exec-3"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders"},
+        "answer": {"drop": true}
+      }
+    ],
+    "observe": {"returns": {"ok": false, "retryable": false}}
+  },
+  {
+    "id": "execution.accepted_carries_the_command",
+    "rule": "An accepted order returns its command id and state",
+    "source": "Execution",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "sell",
+      "volume": {"$decimal": "0.02"}, "idempotency_key": "case-exec-4"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders",
+                   "json_contains": {"side": "sell", "volume": "0.02"}},
+        "answer": {"status": 202, "body": {"$fixture": "accepted"}}
+      }
+    ],
+    "observe": {"returns": {"command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001", "state": "ACCEPTED", "duplicate": false}}
+  }
+]

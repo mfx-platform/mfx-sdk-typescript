@@ -1,0 +1,1755 @@
+[
+  {
+    "id": "errors.validation_error",
+    "rule": "An answer with code validation_error (400) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 400,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "validation_error",
+              "message": "refused: validation_error"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "validation_error",
+        "status": 400
+      }
+    }
+  },
+  {
+    "id": "errors.auth_error",
+    "rule": "An answer with code auth_error (401) is a AuthError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 401,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "auth_error",
+              "message": "refused: auth_error"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "AuthError",
+      "fields": {
+        "code": "auth_error",
+        "status": 401
+      }
+    }
+  },
+  {
+    "id": "errors.forbidden",
+    "rule": "An answer with code forbidden (403) is a ForbiddenError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "forbidden",
+              "message": "refused: forbidden"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ForbiddenError",
+      "fields": {
+        "code": "forbidden",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.not_found",
+    "rule": "An answer with code not_found (404) is a NotFoundError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 404,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "not_found",
+              "message": "refused: not_found"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "NotFoundError",
+      "fields": {
+        "code": "not_found",
+        "status": 404
+      }
+    }
+  },
+  {
+    "id": "errors.conflict",
+    "rule": "An answer with code conflict (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "conflict",
+              "message": "refused: conflict"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "conflict",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.state_error",
+    "rule": "An answer with code state_error (409) is a StateError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "state_error",
+              "message": "refused: state_error"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "StateError",
+      "fields": {
+        "code": "state_error",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.unprocessable",
+    "rule": "An answer with code unprocessable (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "unprocessable",
+              "message": "refused: unprocessable"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "unprocessable",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "errors.window_too_wide",
+    "rule": "An answer with code window_too_wide (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "window_too_wide",
+              "message": "refused: window_too_wide"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "window_too_wide",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "errors.placement_error",
+    "rule": "An answer with code placement_error (409) is a PlacementError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "placement_error",
+              "message": "refused: placement_error"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "PlacementError",
+      "fields": {
+        "code": "placement_error",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.no_farm",
+    "rule": "An answer with code no_farm (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "no_farm",
+              "message": "refused: no_farm"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "no_farm",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.farm_not_in_plan",
+    "rule": "An answer with code farm_not_in_plan (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "farm_not_in_plan",
+              "message": "refused: farm_not_in_plan"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "farm_not_in_plan",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.quota_exceeded",
+    "rule": "An answer with code quota_exceeded (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "quota_exceeded",
+              "message": "refused: quota_exceeded"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "quota_exceeded",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.no_room",
+    "rule": "An answer with code no_room (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "no_room",
+              "message": "refused: no_room"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "no_room",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.destination_refused",
+    "rule": "An answer with code destination_refused (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "destination_refused",
+              "message": "refused: destination_refused"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "destination_refused",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.broker_not_supported",
+    "rule": "An answer with code broker_not_supported (409) is a UnsupportedBrokerError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "broker_not_supported",
+              "message": "refused: broker_not_supported"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "UnsupportedBrokerError",
+      "fields": {
+        "code": "broker_not_supported",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.ambiguous_symbol",
+    "rule": "An answer with code ambiguous_symbol (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "ambiguous_symbol",
+              "message": "refused: ambiguous_symbol"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "ambiguous_symbol",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.cursor_too_old",
+    "rule": "An answer with code cursor_too_old (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "cursor_too_old",
+              "message": "refused: cursor_too_old"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "cursor_too_old",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.no_terminal_on_server",
+    "rule": "An answer with code no_terminal_on_server (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "no_terminal_on_server",
+              "message": "refused: no_terminal_on_server"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "no_terminal_on_server",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.execution_not_permitted",
+    "rule": "An answer with code execution_not_permitted (403) is a ForbiddenError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "execution_not_permitted",
+              "message": "refused: execution_not_permitted"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ForbiddenError",
+      "fields": {
+        "code": "execution_not_permitted",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.farm_frozen",
+    "rule": "An answer with code farm_frozen (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "farm_frozen",
+              "message": "refused: farm_frozen"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "farm_frozen",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.farm_disabled",
+    "rule": "An answer with code farm_disabled (403) is a ForbiddenError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "farm_disabled",
+              "message": "refused: farm_disabled"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ForbiddenError",
+      "fields": {
+        "code": "farm_disabled",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.maintenance",
+    "rule": "An answer with code maintenance (403) is a MaintenanceError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "maintenance",
+              "message": "refused: maintenance"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "MaintenanceError",
+      "fields": {
+        "code": "maintenance",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.depth_not_offered",
+    "rule": "An answer with code depth_not_offered (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "depth_not_offered",
+              "message": "refused: depth_not_offered"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "depth_not_offered",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "errors.tenant_disabled",
+    "rule": "An answer with code tenant_disabled (403) is a TenantDisabledError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "tenant_disabled",
+              "message": "refused: tenant_disabled"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "TenantDisabledError",
+      "fields": {
+        "code": "tenant_disabled",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.tenant_suspended",
+    "rule": "An answer with code tenant_suspended (403) is a TenantSuspendedError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "tenant_suspended",
+              "message": "refused: tenant_suspended"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "TenantSuspendedError",
+      "fields": {
+        "code": "tenant_suspended",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.operation_in_progress",
+    "rule": "An answer with code operation_in_progress (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "operation_in_progress",
+              "message": "refused: operation_in_progress"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "operation_in_progress",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.positions_open",
+    "rule": "An answer with code positions_open (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "positions_open",
+              "message": "refused: positions_open"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "positions_open",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.superseded_by_waiting",
+    "rule": "An answer with code superseded_by_waiting (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "superseded_by_waiting",
+              "message": "refused: superseded_by_waiting"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "superseded_by_waiting",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.rebuild_not_supported",
+    "rule": "An answer with code rebuild_not_supported (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "rebuild_not_supported",
+              "message": "refused: rebuild_not_supported"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "rebuild_not_supported",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.attach_not_supported",
+    "rule": "An answer with code attach_not_supported (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "attach_not_supported",
+              "message": "refused: attach_not_supported"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "attach_not_supported",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.not_customer_code_farm",
+    "rule": "An answer with code not_customer_code_farm (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "not_customer_code_farm",
+              "message": "refused: not_customer_code_farm"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "not_customer_code_farm",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.ea_not_approved",
+    "rule": "An answer with code ea_not_approved (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "ea_not_approved",
+              "message": "refused: ea_not_approved"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "ea_not_approved",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.build_mismatch",
+    "rule": "An answer with code build_mismatch (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "build_mismatch",
+              "message": "refused: build_mismatch"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "build_mismatch",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.ea_attached",
+    "rule": "An answer with code ea_attached (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "ea_attached",
+              "message": "refused: ea_attached"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "ea_attached",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.no_ea_attached",
+    "rule": "An answer with code no_ea_attached (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "no_ea_attached",
+              "message": "refused: no_ea_attached"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "no_ea_attached",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.force_not_needed",
+    "rule": "An answer with code force_not_needed (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "force_not_needed",
+              "message": "refused: force_not_needed"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "force_not_needed",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.confirm_force_required",
+    "rule": "An answer with code confirm_force_required (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "confirm_force_required",
+              "message": "refused: confirm_force_required"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "confirm_force_required",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.terminal_not_retired",
+    "rule": "An answer with code terminal_not_retired (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "terminal_not_retired",
+              "message": "refused: terminal_not_retired"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "terminal_not_retired",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.second_reason_required",
+    "rule": "An answer with code second_reason_required (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "second_reason_required",
+              "message": "refused: second_reason_required"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "second_reason_required",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "errors.cooldown",
+    "rule": "An answer with code cooldown (429) is a RateLimitError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 429,
+          "headers": {
+            "Retry-After": "1"
+          },
+          "body": {
+            "error": {
+              "code": "cooldown",
+              "message": "refused: cooldown"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "RateLimitError",
+      "fields": {
+        "code": "cooldown",
+        "status": 429
+      }
+    }
+  },
+  {
+    "id": "errors.tenant_rate",
+    "rule": "An answer with code tenant_rate (429) is a RateLimitError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 429,
+          "headers": {
+            "Retry-After": "1"
+          },
+          "body": {
+            "error": {
+              "code": "tenant_rate",
+              "message": "refused: tenant_rate"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "RateLimitError",
+      "fields": {
+        "code": "tenant_rate",
+        "status": 429
+      }
+    }
+  },
+  {
+    "id": "errors.concurrency",
+    "rule": "An answer with code concurrency (429) is a RateLimitError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 429,
+          "headers": {
+            "Retry-After": "1"
+          },
+          "body": {
+            "error": {
+              "code": "concurrency",
+              "message": "refused: concurrency"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "RateLimitError",
+      "fields": {
+        "code": "concurrency",
+        "status": 429
+      }
+    }
+  },
+  {
+    "id": "errors.farm_capacity",
+    "rule": "An answer with code farm_capacity (429) is a RateLimitError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 429,
+          "headers": {
+            "Retry-After": "1"
+          },
+          "body": {
+            "error": {
+              "code": "farm_capacity",
+              "message": "refused: farm_capacity"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "RateLimitError",
+      "fields": {
+        "code": "farm_capacity",
+        "status": 429
+      }
+    }
+  },
+  {
+    "id": "errors.rate_limited",
+    "rule": "An answer with code rate_limited (429) is a RateLimitError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 429,
+          "headers": {
+            "Retry-After": "1"
+          },
+          "body": {
+            "error": {
+              "code": "rate_limited",
+              "message": "refused: rate_limited"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "RateLimitError",
+      "fields": {
+        "code": "rate_limited",
+        "status": 429
+      }
+    }
+  },
+  {
+    "id": "errors.upstream_error",
+    "rule": "An answer with code upstream_error (503) is a UpstreamError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 503,
+          "headers": {
+            "Retry-After": "1"
+          },
+          "body": {
+            "error": {
+              "code": "upstream_error",
+              "message": "refused: upstream_error"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "UpstreamError",
+      "fields": {
+        "code": "upstream_error",
+        "status": 503
+      }
+    }
+  },
+  {
+    "id": "errors.dependency_unavailable",
+    "rule": "An answer with code dependency_unavailable (503) is a DependencyUnavailableError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 503,
+          "headers": {
+            "Retry-After": "1"
+          },
+          "body": {
+            "error": {
+              "code": "dependency_unavailable",
+              "message": "refused: dependency_unavailable"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "DependencyUnavailableError",
+      "fields": {
+        "code": "dependency_unavailable",
+        "status": 503
+      }
+    }
+  },
+  {
+    "id": "errors.internal_error",
+    "rule": "An answer with code internal_error (500) is a InternalError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 500,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "internal_error",
+              "message": "refused: internal_error"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "InternalError",
+      "fields": {
+        "code": "internal_error",
+        "status": 500
+      }
+    }
+  }
+]

@@ -1,0 +1,137 @@
+[
+  {
+    "id": "stream.upgrade_signed_and_subscribed",
+    "rule": "The stream's upgrade is signed like a request, and a subscribed channel's messages arrive in order",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events"], "count": 2}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"send": {"op": "ack", "ch": "events"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 1, "type": "terminal.state_changed", "data": {"terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "state": "ACTIVE"}}},
+        {"send": {"op": "msg", "ch": "events", "seq": 2, "type": "terminal.condition_changed", "data": {"terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [1, 2], "types": ["terminal.state_changed", "terminal.condition_changed"], "dropped": 0, "reconnects": 0}}
+  },
+  {
+    "id": "stream.gap_counted",
+    "rule": "Messages a channel's seq proves were not delivered are counted, not hidden",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events"], "count": 2}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"send": {"op": "ack", "ch": "events"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 1, "type": "terminal.state_changed", "data": {}}},
+        {"send": {"op": "msg", "ch": "events", "seq": 4, "type": "terminal.state_changed", "data": {}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [1, 4], "dropped": 2}}
+  },
+  {
+    "id": "stream.lifetime_reconnect_resumes",
+    "rule": "When the connection's lifetime ends (4009) the stream reconnects and resumes events from the last seq it saw",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events"], "count": 2}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"send": {"op": "ack", "ch": "events"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 5, "type": "terminal.state_changed", "data": {}}},
+        {"close": 4009, "reason": "lifetime reached"}
+      ],
+      [
+        {"recv": {"op": "resume", "ch": "events", "after_seq": 5}},
+        {"send": {"op": "ack", "ch": "events"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 6, "type": "terminal.state_changed", "data": {}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [5, 6], "dropped": 0, "reconnects": 1, "lifetime_reconnects": 1}}
+  },
+  {
+    "id": "stream.slow_consumer_reconnect_resumes",
+    "rule": "When the server drops a slow consumer (4008) the stream counts it, reconnects and resumes",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["results:0191f0c2-aaaa-7bbb-8ccc-000000000001"], "count": 2}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001"}},
+        {"send": {"op": "ack", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001"}},
+        {"send": {"op": "msg", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001", "seq": 10, "type": "command.completed", "data": {}}},
+        {"close": 4008, "reason": "slow consumer"}
+      ],
+      [
+        {"recv": {"op": "resume", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001", "after_seq": 10}},
+        {"send": {"op": "msg", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001", "seq": 11, "type": "command.completed", "data": {}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [10, 11], "reconnects": 1, "slow_consumer_drops": 1}}
+  },
+  {
+    "id": "stream.reauthenticate_stops",
+    "rule": "When the server says re-authenticate (4001) the stream stops with an authentication error and does not reconnect",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events"], "count": 1}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"close": 4001, "reason": "the key was revoked"}
+      ]
+    ],
+    "observe": {"raises": "AuthError"}
+  },
+  {
+    "id": "stream.ticks_resubscribe_after_reconnect",
+    "rule": "Ticks are not replayed: after a reconnect a price channel is subscribed again, not resumed, and the new seq is not counted as a gap",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["md:3c2d3e4f-5a6b-7c8d-9e0f-102030405060:EURUSD"], "count": 2}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "md:3c2d3e4f-5a6b-7c8d-9e0f-102030405060:EURUSD"}},
+        {"send": {"op": "msg", "ch": "md:3c2d3e4f-5a6b-7c8d-9e0f-102030405060:EURUSD", "seq": 40, "data": {"bid": "1.12129", "ask": "1.12131"}}},
+        {"close": 4009, "reason": "lifetime reached"}
+      ],
+      [
+        {"recv": {"op": "subscribe", "ch": "md:3c2d3e4f-5a6b-7c8d-9e0f-102030405060:EURUSD"}},
+        {"send": {"op": "msg", "ch": "md:3c2d3e4f-5a6b-7c8d-9e0f-102030405060:EURUSD", "seq": 900, "data": {"bid": "1.12140", "ask": "1.12142"}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [40, 900], "dropped": 0, "reconnects": 1}}
+  },
+  {
+    "id": "stream.resync_forgets_the_position",
+    "rule": "When the replay window has passed the server says resync; the stream reports it and does not count the jump as a gap",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events"], "count": 2}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 3, "type": "terminal.state_changed", "data": {}}},
+        {"close": 4009, "reason": "lifetime reached"}
+      ],
+      [
+        {"recv": {"op": "resume", "ch": "events", "after_seq": 3}},
+        {"send": {"op": "resync", "ch": "events"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 100, "type": "terminal.state_changed", "data": {}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [3, 100], "dropped": 0, "resyncs": 1, "reconnects": 1}}
+  },
+  {
+    "id": "stream.refused_channel_alone",
+    "rule": "A channel the platform refuses costs that channel only: the others carry on",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events", "results:0191f0c2-aaaa-7bbb-8ccc-000000000001"], "count": 1}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"recv": {"op": "subscribe", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001"}},
+        {"send": {"op": "error", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001",
+                  "error": {"code": "forbidden", "message": "the key lacks exec:read"}}},
+        {"send": {"op": "msg", "ch": "events", "seq": 1, "type": "terminal.state_changed", "data": {}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [1], "refused": 1}}
+  }
+]

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "paging.list_follows_the_cursor",
+    "rule": "Listing every terminal follows next_cursor until it is null, one request a page",
+    "source": "Pagination",
+    "call": {"op": "terminals.list", "args": {}},
+    "server": [
+      {
+        "expect": {"method": "GET", "path": "/v1/terminals"},
+        "answer": {"status": 200, "body": {"items": [{"$fixture": "terminal", "id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"}],
+                                            "next_cursor": "c-2", "returned": 1}}
+      },
+      {
+        "expect": {"method": "GET", "path": "/v1/terminals", "query": {"cursor": "c-2"}},
+        "answer": {"status": 200, "body": {"items": [{"$fixture": "terminal", "id": "0191f0c2-aaaa-7bbb-8ccc-000000000002"}],
+                                            "next_cursor": null, "returned": 1}}
+      }
+    ],
+    "observe": {"returns": {"ids": ["0191f0c2-aaaa-7bbb-8ccc-000000000001", "0191f0c2-aaaa-7bbb-8ccc-000000000002"]}}
+  },
+  {
+    "id": "paging.page_is_one_request",
+    "rule": "Reading one page is one request and returns its cursor, with no total",
+    "source": "Pagination",
+    "call": {"op": "terminals.page", "args": {}},
+    "server": [
+      {
+        "expect": {"method": "GET", "path": "/v1/terminals"},
+        "answer": {"status": 200, "body": {"items": [{"$fixture": "terminal"}], "next_cursor": "c-2", "returned": 1}}
+      }
+    ],
+    "observe": {"returns": {"count": 1, "next_cursor": "c-2"}}
+  }
+]
