@@ -48,4 +48,4 @@ export { KEY_HEADER, NONCE_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./
 export type { components, operations, paths } from "./generated/api.js";
 
 /** This package's version. */
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.1";

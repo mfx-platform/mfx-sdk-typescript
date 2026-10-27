@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, type KeyObject } from "node:crypto";
 import { inspect } from "node:util";
 
 import { describe, expect, it } from "vitest";
@@ -8,6 +8,13 @@ import { RequestSigner, SigningKey, signingMessage } from "../../src/index.js";
 const SEED = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
 const VECTOR =
   "OLOeJhRskf6kvodIyvrrpI/Hwlg3MXn//TTc64zpcl0qACk3BOhNfMV8yrVthZUdUXlOCntJAIrfgHTNK6faDg==";
+
+/** A private key as PKCS#8 PEM text. @types/node 22 says string or Buffer, 26 says string. */
+function pemOf(key: KeyObject): string {
+  // Declared unknown so neither version's type makes one branch impossible.
+  const pem: unknown = key.export({ format: "pem", type: "pkcs8" });
+  return typeof pem === "string" ? pem : (pem as Buffer).toString("utf8");
+}
 
 describe("every request is signed with the tenant's Ed25519 key and the key is never printed", () => {
   it("reproduces the API description's test vector byte for byte", () => {
@@ -25,12 +32,10 @@ describe("every request is signed with the tenant's Ed25519 key and the key is n
 
   it("takes a PEM key, and refuses one that is not Ed25519 or not 32 bytes", () => {
     const { privateKey } = generateKeyPairSync("ed25519");
-    const pem = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const pem = pemOf(privateKey);
     expect(new SigningKey(pem).sign(Buffer.from("x"))).toHaveLength(88);
     const rsa = generateKeyPairSync("rsa", { modulusLength: 1024 }).privateKey;
-    expect(() => new SigningKey(rsa.export({ format: "pem", type: "pkcs8" }).toString())).toThrow(
-      /Ed25519, not rsa/,
-    );
+    expect(() => new SigningKey(pemOf(rsa))).toThrow(/Ed25519, not rsa/);
     expect(() => new SigningKey("c2hvcnQ=")).toThrow(/32 raw bytes/);
     expect(() => new SigningKey("not base64 at all!")).toThrow(/32 raw bytes/);
   });

@@ -55,7 +55,7 @@ for await (const event of stream) {
 Use a **demo** account while you try it: an order is real on whatever account the terminal is
 logged in to.
 
-## What 0.1.0 covers
+## What 0.1 covers
 
 | Area      | In this release                                                                       |
 | --------- | ------------------------------------------------------------------------------------- |

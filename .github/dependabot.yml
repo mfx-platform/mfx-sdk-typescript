@@ -10,6 +10,11 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+    # @types/node stays on the oldest Node.js line the SDK supports (engines: 22), so code that
+    # needs a newer Node.js fails the type check instead of failing for a user on Node.js 22.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

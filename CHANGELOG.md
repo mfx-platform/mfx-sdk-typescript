@@ -6,6 +6,17 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 
 ## Unreleased
 
+## 0.1.1
+
+No change to what the SDK does: the same API and behaviour as 0.1.0, and all 72 cases of the
+shared SDK test suite 0.2.0 still pass.
+
+### Changed
+
+- Built and checked with ESLint 10.
+- The Node.js type definitions stay on Node.js 22, the oldest version the SDK supports, so code that
+  needs a newer Node.js fails the build instead of failing for you on Node.js 22.
+
 ## 0.1.0
 
 The first release. It passes all 72 cases of the shared SDK test suite 0.2.0.

@@ -1,6 +1,6 @@
 {
   "name": "@mfxhub/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Typed TypeScript client for the MFX Hub API: hosted trading terminals, market data, execution and a live event stream",
   "license": "Apache-2.0",
   "type": "module",
@@ -52,11 +52,11 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
     "@types/ws": "^8.18.2",
     "@vitest/coverage-v8": "^5.0.5",
-    "eslint": "^9.39.5",
+    "eslint": "^10.13.0",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.10",
     "typescript": "^5.9.3",
