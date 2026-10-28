@@ -1,4 +1,4 @@
-# The fake hub's dependencies, exported from mfx-sdk-conformance 0.2.0's lock file by
+# The fake hub's dependencies, exported from mfx-sdk-conformance 0.3.0's lock file by
 # tools/update-suite.mjs. Installed with --require-hashes. Do not edit by hand.
 aiohappyeyeballs==2.7.1 \
     --hash=sha256:065665c041c42a5938ed220bdcd7230f22527fbec085e1853d2402c8a3615d9d \

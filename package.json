@@ -1,6 +1,6 @@
 {
   "name": "@mfxhub/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Typed TypeScript client for the MFX Hub API: hosted trading terminals, market data, execution and a live event stream",
   "license": "Apache-2.0",
   "type": "module",

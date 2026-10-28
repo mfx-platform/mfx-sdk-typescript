@@ -62,7 +62,7 @@ logged in to.
 | Signing   | every request and the stream's upgrade, Ed25519                                       |
 | Errors    | one typed error per error code the API names                                          |
 | Terminals | `get`, `page`, `list`, `create`                                                       |
-| Execution | `placeOrder`, with `ExecutionResult` for every outcome                                |
+| Execution | `placeOrder` and `getCommand`, with `ExecutionResult` for every outcome               |
 | Catalogue | `quote`                                                                               |
 | Stream    | `client.stream()`: events, results, account, ticks, candles, book and expert channels |
 

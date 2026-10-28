@@ -25,5 +25,30 @@
     "broker_time": "2026-10-24T00:05:00.000",
     "age_s": 1.5,
     "state": "open"
+  },
+  "command_succeeded": {
+    "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
+    "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001",
+    "kind": "order_place",
+    "state": "SUCCEEDED",
+    "final": true,
+    "created_at": "2026-10-23T09:00:00Z",
+    "updated_at": "2026-10-23T09:00:00.184Z",
+    "expires_at": "2026-10-23T09:00:10Z",
+    "result": {
+      "ok": true,
+      "reason": null,
+      "retryable": false,
+      "mt5_retcode": 10009,
+      "retcode_text": "Request completed",
+      "comment_raw": "Request executed",
+      "terminal_state": "ACTIVE",
+      "tickets": {"order": 30551, "deal": 30552, "position": 30551},
+      "exec_price": "1.12181",
+      "exec_volume": "0.01",
+      "broker_latency_ms": 41,
+      "agent_latency_ms": 3,
+      "attempts": 1
+    }
   }
 }

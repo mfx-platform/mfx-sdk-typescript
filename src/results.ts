@@ -155,10 +155,13 @@ export function fromCommand(
   const raw = record(body);
   const state = typeof raw.state === "string" && STATES.has(raw.state) ? raw.state : null;
   const result = record(raw.result);
+  const hasResult = result === raw.result; // record() returns the object itself only for an object
   const reasonText = text(result.reason);
   const tickets = record(result.tickets);
   return {
-    ok: result.ok === true,
+    // The result says, once there is one. A CommandAccepted has none: a repeat of a command that
+    // already succeeded says so by its state alone.
+    ok: hasResult ? result.ok === true : state === "SUCCEEDED",
     idempotencyKey,
     clientRttMs,
     commandId: text(raw.command_id),

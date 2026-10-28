@@ -6,6 +6,28 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 
 ## Unreleased
 
+## 0.1.2
+
+### Fixed
+
+- An order sent again with the same idempotency key, after the first had already finished, came
+  back with `ok` false and no price, tickets or broker comment, because the platform answers a
+  repeat with the command's state only. A filled order read as not filled. The SDK now reads the
+  command once and returns the original result in full, marked `duplicate`. A repeat still in
+  flight is returned as it is, with no extra read.
+- If that read fails, `placeOrder` still resolves with what the platform said (the state, `ok`
+  true for a success, `duplicate`) with the price and tickets empty, and `detail` names the
+  `getCommand` call that reads the rest. It never rejects.
+
+### Added
+
+- `execution.getCommand(commandId)`: one command and its result, as the platform has it now. Like
+  every execution method it resolves to an `ExecutionResult` and never rejects.
+
+### Changed
+
+- The SDK passes the shared SDK test suite 0.3.0, all 74 cases.
+
 ## 0.1.1
 
 No change to what the SDK does: the same API and behaviour as 0.1.0, and all 72 cases of the

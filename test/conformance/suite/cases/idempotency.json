@@ -33,7 +33,7 @@
   },
   {
     "id": "idempotency.duplicate_is_the_original",
-    "rule": "An answer that says duplicate is read as the original command, not a second one",
+    "rule": "An answer that says duplicate is read as the original command, not a second one; one still in flight is reported as it is, with no extra read",
     "source": "Idempotency",
     "call": {"op": "execution.place_order", "args": {
       "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
@@ -43,9 +43,58 @@
         "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders",
                    "headers": {"Idempotency-Key": "case-key-dup"}},
         "answer": {"status": 202, "body": {"command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
-                                            "state": "SUCCEEDED", "duplicate": true}}
+                                            "state": "EXECUTING", "duplicate": true}}
       }
     ],
-    "observe": {"returns": {"duplicate": true, "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001"}}
+    "observe": {"returns": {"ok": false, "state": "EXECUTING", "duplicate": true,
+                            "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001"}}
+  },
+  {
+    "id": "idempotency.final_duplicate_returns_the_original_result",
+    "rule": "A duplicate that is already final is answered with its state only, so the SDK reads the command once and returns the original result in full",
+    "source": "Idempotency",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$decimal": "0.01"}, "idempotency_key": "case-key-dup-final"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders",
+                   "headers": {"Idempotency-Key": "case-key-dup-final"}},
+        "answer": {"status": 202, "body": {"command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
+                                            "state": "SUCCEEDED", "duplicate": true}}
+      },
+      {
+        "expect": {"method": "GET", "path": "/v1/commands/0191f0c2-bbbb-7ccc-8ddd-000000000001"},
+        "answer": {"status": 200, "body": {"$fixture": "command_succeeded"}}
+      }
+    ],
+    "observe": {"returns": {"ok": true, "state": "SUCCEEDED", "duplicate": true, "retryable": false,
+                            "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
+                            "exec_price": {"$decimal": "1.12181"}, "position": 30551,
+                            "comment_raw": "Request executed"}}
+  },
+  {
+    "id": "idempotency.final_duplicate_read_failing_is_a_result",
+    "rule": "When the read of a final duplicate fails, the call still returns what the platform said - the state, ok from it, duplicate - and never raises",
+    "source": "Idempotency",
+    "call": {"op": "execution.place_order", "args": {
+      "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001", "symbol": "EURUSD", "side": "buy",
+      "volume": {"$decimal": "0.01"}, "idempotency_key": "case-key-dup-unread"}},
+    "server": [
+      {
+        "expect": {"method": "POST", "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001/orders",
+                   "headers": {"Idempotency-Key": "case-key-dup-unread"}},
+        "answer": {"status": 202, "body": {"command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
+                                            "state": "SUCCEEDED", "duplicate": true}}
+      },
+      {
+        "expect": {"method": "GET", "path": "/v1/commands/0191f0c2-bbbb-7ccc-8ddd-000000000001"},
+        "answer": {"status": 503,
+                   "body": {"error": {"code": "dependency_unavailable", "message": "refused: dependency_unavailable"}}}
+      }
+    ],
+    "observe": {"returns": {"ok": true, "state": "SUCCEEDED", "duplicate": true, "retryable": false,
+                            "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
+                            "exec_price": null, "position": null}}
   }
 ]

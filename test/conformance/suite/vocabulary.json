@@ -75,9 +75,12 @@
         "state",
         "command_id",
         "duplicate",
-        "retryable"
+        "retryable",
+        "exec_price",
+        "position",
+        "comment_raw"
       ],
-      "note": "never raises"
+      "note": "never raises; exec_price is the fill price (a $decimal compares as a decimal), position is the position ticket (tickets.position), and a field the result does not carry is null"
     },
     "catalog.quote": {
       "args": [

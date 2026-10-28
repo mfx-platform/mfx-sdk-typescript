@@ -13,7 +13,7 @@ from mfx_fake_hub.cases import Case, Step, load_cases
 from mfx_fake_hub.keys import TEST_KEY_ID, TEST_PUBLIC_KEY, TEST_SEED_HEX
 from mfx_fake_hub.server import Hub, make_app
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "TEST_KEY_ID",

@@ -146,6 +146,9 @@ async function call(
       command_id: result.commandId,
       duplicate: result.duplicate,
       retryable: result.retryable,
+      exec_price: result.execPrice,
+      position: result.tickets.position,
+      comment_raw: result.commentRaw,
     };
   }
   if (op === "catalog.quote") {

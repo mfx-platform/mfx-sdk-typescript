@@ -86,9 +86,138 @@ describe("an accepted order carries its command, and a duplicate is the original
   });
 
   it("reads a duplicate as the original command, not a second one", async () => {
-    const net = fake(json(202, { command_id: COMMAND, state: "SUCCEEDED", duplicate: true }));
+    const net = fake(json(202, { command_id: COMMAND, state: "EXECUTING", duplicate: true }));
     const result = await client(net).execution.placeOrder(TERMINAL, ORDER);
-    expect(result).toMatchObject({ duplicate: true, commandId: COMMAND, final: true });
+    expect(result).toMatchObject({ duplicate: true, commandId: COMMAND, final: false });
+    expect(net.calls).toHaveLength(1);
+  });
+});
+
+const command = (state: string, result: Record<string, unknown> | null) =>
+  json(200, {
+    command_id: COMMAND,
+    terminal_id: TERMINAL,
+    kind: "order_place",
+    state,
+    final: ["SUCCEEDED", "FAILED", "EXPIRED", "REJECTED"].includes(state),
+    created_at: "2026-10-28T09:00:00Z",
+    updated_at: "2026-10-28T09:00:00.184Z",
+    result,
+  });
+const FILLED = {
+  ok: true,
+  reason: null,
+  retryable: false,
+  mt5_retcode: 10009,
+  comment_raw: "filled",
+  tickets: { order: 8811, deal: 9922, position: 8811 },
+  exec_price: "1.09431",
+  exec_volume: "0.01",
+  attempts: 1,
+};
+const repeat = (state: string) => json(202, { command_id: COMMAND, state, duplicate: true });
+
+describe("a final duplicate returns the original result, read once", () => {
+  it("returns a fill in full: ok, price, tickets and comment", async () => {
+    const net = fake(repeat("SUCCEEDED"), command("SUCCEEDED", FILLED));
+    const result = await client(net).execution.placeOrder(TERMINAL, ORDER);
+    expect(net.calls.map((c) => [c.init.method, c.url.pathname])).toEqual([
+      ["POST", `/v1/terminals/${TERMINAL}/orders`],
+      ["GET", `/v1/commands/${COMMAND}`],
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      state: "SUCCEEDED",
+      final: true,
+      duplicate: true,
+      retryable: false,
+      commandId: COMMAND,
+      idempotencyKey: "k-1",
+      execPrice: "1.09431",
+      commentRaw: "filled",
+      tickets: { order: 8811, deal: 9922, position: 8811 },
+      detail: null,
+    });
+  });
+
+  it("returns a rejection with its reason", async () => {
+    const rejected = { ...FILLED, ok: false, reason: "market_closed", exec_price: null };
+    const net = fake(repeat("REJECTED"), command("REJECTED", rejected));
+    const result = await client(net).execution.placeOrder(TERMINAL, ORDER);
+    expect(result).toMatchObject({ ok: false, reason: "market_closed", duplicate: true });
+    expect(result.execPrice).toBeNull();
+  });
+
+  it("makes no extra request for a repeat in flight, a first answer, or a read", async () => {
+    const net = fake(
+      repeat("EXECUTING"),
+      json(202, { command_id: COMMAND, state: "SUCCEEDED", duplicate: false }),
+      command("SUCCEEDED", FILLED),
+    );
+    const sdk = client(net).execution;
+    const inFlight = await sdk.placeOrder(TERMINAL, ORDER);
+    const first = await sdk.placeOrder(TERMINAL, { ...ORDER, idempotencyKey: "k-2" });
+    const read = await sdk.getCommand(COMMAND);
+    expect(net.calls).toHaveLength(3);
+    expect(inFlight).toMatchObject({ ok: false, state: "EXECUTING", duplicate: true });
+    expect(first).toMatchObject({ ok: true, state: "SUCCEEDED", duplicate: false });
+    expect(read).toMatchObject({ ok: true, execPrice: "1.09431", duplicate: false });
+  });
+});
+
+describe("a final duplicate whose read fails is still what the platform said", () => {
+  const faults: [string, Handler][] = [
+    ["503", error(503, "dependency_unavailable")],
+    ["404", error(404, "not_found")],
+    ["a dropped connection", throwing(refusedBy("ECONNRESET"))],
+    ["an answer that is not a command", json(200, { nothing: true })],
+  ];
+  it.each(faults)("after %s", async (_, fault) => {
+    const net = fake(repeat("SUCCEEDED"), fault);
+    const result = await client(net).execution.placeOrder(TERMINAL, ORDER);
+    expect(result).toMatchObject({
+      ok: true,
+      state: "SUCCEEDED",
+      final: true,
+      duplicate: true,
+      retryable: false,
+      commandId: COMMAND,
+      idempotencyKey: "k-1",
+      execPrice: null,
+      tickets: { order: null, deal: null, position: null },
+    });
+    expect(result.detail).toContain(`execution.getCommand('${COMMAND}') reads it`);
+    expect(net.calls).toHaveLength(2);
+  });
+});
+
+describe("getCommand reads one command and never rejects", () => {
+  it("reads the command, carrying the key it is given", async () => {
+    const net = fake(command("SUCCEEDED", FILLED));
+    const result = await client(net).execution.getCommand(COMMAND, "k-9");
+    expect(net.calls[0]?.init.method).toBe("GET");
+    expect(net.calls[0]?.url.pathname).toBe(`/v1/commands/${COMMAND}`);
+    expect(
+      (net.calls[0]?.init.headers as Record<string, string>)["Idempotency-Key"],
+    ).toBeUndefined();
+    expect(result).toMatchObject({ ok: true, idempotencyKey: "k-9", execPrice: "1.09431" });
+  });
+
+  it("resolves with an in-flight command as it is, and a refusal as a result", async () => {
+    const net = fake(command("EXECUTING", null), error(404, "not_found"));
+    const sdk = client(net).execution;
+    expect(await sdk.getCommand(COMMAND)).toMatchObject({
+      ok: false,
+      final: false,
+      idempotencyKey: "",
+    });
+    expect(await sdk.getCommand(COMMAND)).toMatchObject({ ok: false, reason: "refused" });
+  });
+
+  it("throws for an id that is not a UUID, before sending", async () => {
+    const net = fake();
+    await expect(client(net).execution.getCommand("nope")).rejects.toThrow(/commandId/);
+    expect(net.calls).toHaveLength(0);
   });
 });
 

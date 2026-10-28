@@ -130,8 +130,20 @@ export class Execution {
     );
   }
 
+  /**
+   * One command and its result, as the platform has it now. A command of another tenant is not
+   * found, never forbidden. Like every method here it resolves to a result and never rejects:
+   * a caller checking what happened to an order must not have to catch to learn it cannot tell.
+   *
+   * `idempotencyKey` is only carried into the result, so a retry can reuse it; a read sends none.
+   */
+  async getCommand(commandId: string, idempotencyKey = ""): Promise<ExecutionResult> {
+    const id = uuid("commandId", commandId);
+    return this.#command({ method: "GET", path: `/commands/${id}` }, idempotencyKey, false);
+  }
+
   /** Sends one execution call, once, and turns everything it can do into a result. */
-  async #command(spec: RequestSpec, key: string): Promise<ExecutionResult> {
+  async #command(spec: RequestSpec, key: string, write = true): Promise<ExecutionResult> {
     const started = performance.now();
     const elapsed = (): number => performance.now() - started;
     const what = `${spec.method} ${spec.path}`;
@@ -166,6 +178,23 @@ export class Execution {
       // throwFor throws only the API's typed errors: every other answer is a refusal.
       return concluded("refused", key, elapsed(), `${what}: ${(error as MfxApiError).message}`);
     }
-    return fromCommand(answer.body, key, elapsed());
+    const result = fromCommand(answer.body, key, elapsed());
+    if (!(write && result.duplicate && result.final && result.commandId !== null)) return result;
+    // A repeat of a command that is already final is answered with its state only: read the
+    // command once, so the caller gets the original result - price, tickets, reason - and not an
+    // empty one. One extra read, only on a final repeat.
+    const original = await this.getCommand(result.commandId, key);
+    if (original.commandId !== null && original.state !== null) {
+      return { ...original, duplicate: true, clientRttMs: elapsed() };
+    }
+    // DECISION: the read failed. Report what the platform did say - the state, ok
+    // from it, duplicate - and how to read the rest. Never UNKNOWN: the outcome is known.
+    return {
+      ...result,
+      clientRttMs: elapsed(),
+      detail:
+        `the original result could not be read (${original.detail ?? "no answer"}); ` +
+        `execution.getCommand('${result.commandId}') reads it`,
+    };
   }
 }
