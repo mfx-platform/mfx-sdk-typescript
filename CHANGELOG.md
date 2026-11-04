@@ -4,7 +4,38 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.2.0
+
+### Added
+
+- `terminals.journal(terminalId, { lines })`: the terminal's MetaTrader journal, newest first, 1 to
+  200 lines. While the terminal runs the lines are read from it (`from: "live"`); after it stops
+  they are the last lines it kept, for 24 hours (`from: "last_words"`). A terminal with no lines
+  held throws `StateError`; a cell that does not answer throws `UpstreamError`.
+- `terminals.page` and `terminals.list` take `labels` (every pair must match) and `state` (one or
+  several), applied by the platform before the page is cut.
+- `catalog.catalogues(brokerId)`: one row per server and account type you hold a catalogue for,
+  with its `catalogue_hash`, to re-read a symbol list only when it changed.
+- The API description is re-vendored. New on what comes back: `broker_words` and `refusal_kind` on
+  a terminal's conditions and on `terminal.condition_changed`, `server_kind` on a terminal, path,
+  ISIN, exchange, category, base currency, basis and calculation mode on a catalogue symbol,
+  `source` (`live` or `last_known`) on a page of symbols, and the values `added`, `came_back`,
+  `description` and `identity` for the `change` of `symbol.spec_changed`.
+- A new event, `maintenance.window_changed`, arrives on the `events` channel like any other. The
+  payload types `MaintenanceWindowChanged`, `TerminalConditionChanged`, `SymbolSpecChanged` and
+  `SymbolSpecChange` are exported.
+- The rest of order entry on `client.execution`: `modifyOrder`, `cancelOrder`, `modifyPosition`,
+  `closePosition`, `closePositionPartial`, `closePositionBy`, `setTrailingStop` and
+  `clearTrailingStop`. Like `placeOrder`, each takes a required idempotency key, sends only what
+  you give, takes decimals as strings, and resolves to an `ExecutionResult` without ever
+  rejecting. A wrong argument (a ticket that is not a positive whole number, a modify that
+  changes nothing, a comment over 31 characters) throws before anything is sent.
+- `execution.waitFor(commandId, { timeoutMs })` reads a command until it is final, pausing 200 ms
+  and doubling up to 2 s, and returns the last answer when the time runs out. A result that is
+  not final is never a reason to send again.
+- `client.accounts`: `account`, `positions` and `pendingOrders` from the terminal's latest
+  snapshot, and closed deals inside a required window, a page at a time (`dealsPage`) or every
+  page (`deals`).
 
 ## 0.1.2
 

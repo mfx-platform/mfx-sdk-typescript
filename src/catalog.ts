@@ -11,6 +11,13 @@ import type { components } from "./generated/api.js";
 /** One symbol's current quote, with its age and whether the market can be traded. */
 export type Quote = components["schemas"]["SymbolQuote"];
 
+/** One server and account type a tenant holds a catalogue for, with a hash of the whole list. */
+export type BrokerCatalogue = components["schemas"]["BrokerCatalogue"];
+/** A catalogue symbol, with its path, ISIN, exchange, category and calculation fields. */
+export type CatalogSymbol = components["schemas"]["Symbol"];
+/** A page of catalogue symbols; `source` says whether they are live or the last known. */
+export type SymbolPage = components["schemas"]["SymbolPage"];
+
 /** Which of a tenant's servers and account types a symbol is meant on. */
 export interface QuoteOptions {
   /** Needed when the symbol is on more than one of your servers (409 `ambiguous_symbol`). */
@@ -52,5 +59,20 @@ export class Catalog {
       },
     });
     return body as Quote;
+  }
+
+  /**
+   * One row per server and account type the tenant holds a catalogue for on this broker, each
+   * with `catalogue_hash`. The hash changes when a symbol is added, removed, comes back, or its
+   * specification, description or identity changes, and never on a quote: compare it to the last
+   * one you saw to re-read only what changed. A broker with no catalogue of yours gives `[]`.
+   */
+  async catalogues(brokerId: string): Promise<readonly BrokerCatalogue[]> {
+    const broker = uuid("brokerId", brokerId);
+    const body = (await this.#client.read({
+      method: "GET",
+      path: `/brokers/${broker}/catalogues`,
+    })) as components["schemas"]["BrokerCatalogueList"];
+    return body.items;
   }
 }

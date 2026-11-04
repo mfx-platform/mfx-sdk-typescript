@@ -1,4 +1,5 @@
-// `client.execution`: placing orders.
+// `client.execution`: placing orders, changing and cancelling them, and changing and closing
+// positions.
 //
 // Every method here resolves to an ExecutionResult and never rejects for anything the platform or
 // the network does. A transport fault, a timeout, a rate limit, a refusal and a broker rejection
@@ -105,6 +106,98 @@ function orderBody(order: PlaceOrder): Partial<OrderPlace> {
   };
 }
 
+/** Every command on an existing order or position takes its key; nothing else is required. */
+export interface Keyed {
+  /** Required: the same key sent again returns the original command, not a second one. */
+  readonly idempotencyKey: string;
+}
+
+/** What {@link Execution.modifyOrder} takes: only what changes; at least one field. */
+export interface ModifyOrder extends Keyed {
+  readonly price?: string;
+  readonly stopLimitPrice?: string;
+  readonly sl?: string;
+  readonly tp?: string;
+  /** A new expiry; `null` removes it and the order stays until cancelled. */
+  readonly expiresAt?: Date | string | null;
+}
+
+/** What {@link Execution.modifyPosition} takes: a stop loss, a take profit, or both. */
+export interface ModifyPosition extends Keyed {
+  readonly sl?: string;
+  readonly tp?: string;
+}
+
+/** What {@link Execution.closePosition} takes. */
+export interface ClosePosition extends Keyed {
+  /** How far from the price the close may fill, in points; the platform's default is 20. */
+  readonly deviationPoints?: number;
+  /** The closing deal's comment, up to 31 characters; absent, it takes the position's own. */
+  readonly comment?: string;
+}
+
+/** What {@link Execution.closePositionPartial} takes. */
+export interface ClosePositionPartial extends ClosePosition {
+  /** The volume to close, in lots, as a decimal string, inside the symbol's step. */
+  readonly volume: string;
+}
+
+/** What {@link Execution.closePositionBy} takes. */
+export interface ClosePositionBy extends Keyed {
+  /** The opposite position, in the same symbol, that this one is closed against. */
+  readonly byTicket: number;
+}
+
+/** What {@link Execution.setTrailingStop} takes. */
+export interface SetTrailingStop extends Keyed {
+  /** How far behind the best price the stop loss follows, as a price distance: `"0.0020"`. */
+  readonly distance: string;
+}
+
+/** What {@link Execution.waitFor} takes. */
+export interface WaitFor {
+  /** How long to keep reading, 1 ms to 10 minutes; 30 s unless given. */
+  readonly timeoutMs?: number;
+  /** Carried into the result only, so a retry can reuse it. */
+  readonly idempotencyKey?: string;
+}
+
+/** The first pause between reads of a command, doubled each time up to {@link POLL_CAP_MS}. */
+export const POLL_FROM_MS = 200;
+/** The longest pause between two reads of a command. */
+export const POLL_CAP_MS = 2000;
+
+function ticketOf(name: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+    throw new TypeError(`${name} is a positive whole number, the ticket MT5 gave`);
+  }
+  return value;
+}
+
+function commentOf(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") throw new TypeError("comment is a string");
+  if (value.length > 31) {
+    throw new RangeError("comment is at most 31 characters; MT5 would cut a longer one");
+  }
+  return value;
+}
+
+function present(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+}
+
+function maybe(name: string, value: string | undefined): string | undefined {
+  return value === undefined ? undefined : decimal(name, value);
+}
+
+function closing(options: ClosePosition): Record<string, unknown> {
+  return present({
+    deviation_points: whole("deviationPoints", options.deviationPoints, 0, 2 ** 31 - 1),
+    comment: commentOf(options.comment),
+  });
+}
+
 /** Order entry for one tenant. Every method resolves to a result; none rejects. */
 export class Execution {
   readonly #client: MfxClient;
@@ -126,6 +219,150 @@ export class Execution {
     const body = orderBody(order);
     return this.#command(
       { method: "POST", path: `/terminals/${id}/orders`, body, idempotencyKey: key },
+      key,
+    );
+  }
+
+  /**
+   * Amend a pending order's price, stops or expiry; at least one must change. Its volume, side,
+   * type and symbol cannot be amended: cancel it and place another.
+   */
+  async modifyOrder(
+    terminalId: string,
+    ticket: number,
+    change: ModifyOrder,
+  ): Promise<ExecutionResult> {
+    const expiresAt =
+      change.expiresAt instanceof Date ? change.expiresAt.toISOString() : change.expiresAt;
+    const body = present({
+      price: maybe("price", change.price),
+      stop_limit_price: maybe("stopLimitPrice", change.stopLimitPrice),
+      sl: maybe("sl", change.sl),
+      tp: maybe("tp", change.tp),
+      expires_at: expiresAt,
+    });
+    if (Object.keys(body).length === 0) {
+      throw new TypeError("modifyOrder changes nothing: give a price, stops or an expiry");
+    }
+    return this.#on(terminalId, ticket, "orders", "modify", change, body);
+  }
+
+  /** Cancel a pending order. First class, not a modify with a special case. */
+  async cancelOrder(terminalId: string, ticket: number, options: Keyed): Promise<ExecutionResult> {
+    return this.#on(terminalId, ticket, "orders", "cancel", options);
+  }
+
+  /** Move a position's stop loss, take profit, or both. At least one is required. */
+  async modifyPosition(
+    terminalId: string,
+    ticket: number,
+    change: ModifyPosition,
+  ): Promise<ExecutionResult> {
+    const body = present({ sl: maybe("sl", change.sl), tp: maybe("tp", change.tp) });
+    if (Object.keys(body).length === 0) {
+      throw new TypeError("modifyPosition changes nothing: give sl, tp or both");
+    }
+    return this.#on(terminalId, ticket, "positions", "modify", change, body);
+  }
+
+  /** Close a position in full. */
+  async closePosition(
+    terminalId: string,
+    ticket: number,
+    options: ClosePosition,
+  ): Promise<ExecutionResult> {
+    return this.#on(terminalId, ticket, "positions", "close", options, closing(options));
+  }
+
+  /** Close part of a position: the volume to close, inside the symbol's step. The rest stays. */
+  async closePositionPartial(
+    terminalId: string,
+    ticket: number,
+    options: ClosePositionPartial,
+  ): Promise<ExecutionResult> {
+    const body = { volume: decimal("volume", options.volume), ...closing(options) };
+    return this.#on(terminalId, ticket, "positions", "close-partial", options, body);
+  }
+
+  /**
+   * Close a position against an opposite one in the same symbol (hedging accounts): the smaller
+   * disappears and the larger is reduced by its volume.
+   */
+  async closePositionBy(
+    terminalId: string,
+    ticket: number,
+    options: ClosePositionBy,
+  ): Promise<ExecutionResult> {
+    const by = ticketOf("byTicket", options.byTicket);
+    if (by === ticket) throw new RangeError("a position cannot be closed by itself");
+    return this.#on(terminalId, ticket, "positions", "close-by", options, { by_ticket: by });
+  }
+
+  /**
+   * Keep the position's stop loss `distance` behind the best price it reaches, only ever tighter.
+   * Setting it again replaces the distance and keeps what the stop has reached.
+   */
+  async setTrailingStop(
+    terminalId: string,
+    ticket: number,
+    options: SetTrailingStop,
+  ): Promise<ExecutionResult> {
+    const body = { distance: decimal("distance", options.distance) };
+    return this.#on(terminalId, ticket, "positions", "trailing-stop", options, body, "PUT");
+  }
+
+  /** Remove the position's trailing stop. The stop loss stays where the trail left it. */
+  async clearTrailingStop(
+    terminalId: string,
+    ticket: number,
+    options: Keyed,
+  ): Promise<ExecutionResult> {
+    return this.#on(terminalId, ticket, "positions", "trailing-stop", options, undefined, "DELETE");
+  }
+
+  /**
+   * Read the command until it is final, or until `timeoutMs` (30 s unless given), pausing 200 ms
+   * and doubling up to 2 s between reads. Returns the last answer either way: a command still
+   * EXECUTING when the time runs out is reported as it is, not guessed at. **A result that is not
+   * final is never a reason to send again**: an UNKNOWN command may already be a position.
+   */
+  async waitFor(commandId: string, options: WaitFor = {}): Promise<ExecutionResult> {
+    const timeout = options.timeoutMs ?? 30_000;
+    if (!Number.isFinite(timeout) || timeout < 1 || timeout > 600_000) {
+      throw new RangeError("timeoutMs is 1 to 600,000");
+    }
+    const key = options.idempotencyKey ?? "";
+    let result = await this.getCommand(commandId, key);
+    // DECISION: the time is counted in the pauses the client takes, not on a wall clock, so a
+    // scripted sleep in a test gives the same schedule a caller gets.
+    let waited = 0;
+    let pause = POLL_FROM_MS;
+    while (!result.final && waited < timeout) {
+      const step = Math.min(pause, POLL_CAP_MS, timeout - waited);
+      await this.#client.pause(step);
+      waited += step;
+      pause *= 2;
+      result = await this.getCommand(commandId, key);
+    }
+    return result;
+  }
+
+  /** One command on an existing order or position: checked, then sent once. */
+  async #on(
+    terminalId: string,
+    ticket: unknown,
+    kind: "orders" | "positions",
+    action: string,
+    options: Keyed,
+    body?: Record<string, unknown>,
+    method: "POST" | "PUT" | "DELETE" = "POST",
+  ): Promise<ExecutionResult> {
+    const id = uuid("terminalId", terminalId);
+    const number = ticketOf("ticket", ticket);
+    const key = idempotencyKey((options as Partial<Keyed> | undefined)?.idempotencyKey);
+    const path = `/terminals/${id}/${kind}/${String(number)}/${action}`;
+    return this.#command(
+      { method, path, ...(body === undefined ? {} : { body }), idempotencyKey: key },
       key,
     );
   }

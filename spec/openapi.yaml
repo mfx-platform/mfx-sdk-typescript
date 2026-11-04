@@ -19,7 +19,9 @@ info:
     symbol's increment (its tick size for a price, its `volume_step` for a volume) is put exactly onto
     that multiple, and a value further off is sent as given, for the broker to accept or refuse.
     Every response carries `X-MFX-Budget-Remaining` and `X-MFX-Budget-Source`;
-    429 carries `Retry-After`.
+    429 carries `Retry-After`. The limits (`GET /v1/usage`: a ceiling for the whole tenant, and a
+    key's own cap where one is set) refuse an execution command over its rate with 429
+    `rate_limited` naming the limit in `details.limit` and whose it is in `details.scope`.
     **MFX Hub never answers 502 or 504 itself.** A failure upstream of the platform - the
     tenant's own terminal or cell that did not answer or could not do what was asked, or a service
     the platform calls that refused - is **503 `upstream_error`** with `details.reason` where there is
@@ -52,12 +54,47 @@ tags:
   description: 'A tenant''s own expert advisors: upload the source, read the verdict and the report, withdraw
     (ea:read / ea:write). Only for a tenant with a farm that runs customer code'
 - name: usage
-  description: Quota consumption and remaining budget (billing:read)
+  description: The calling key's and its tenant's limits, where each comes from, and how much is in use
+    (acct:read)
 - name: stream
   description: Multiplexed WebSocket stream — md, candles, events, results
 - name: webhooks
-  description: MFX Hub calls the tenant's own HTTPS address for the events it asks for, signed, tried
-    again when it fails, and kept when it keeps failing (hook:read / hook:write)
+  description: |
+    MFX Hub calls the tenant's own HTTPS address for the events it asks for, signed, tried again
+    when it fails, and kept when it keeps failing (hook:read / hook:write).
+
+    **A delivery.** One `POST` for one event, `Content-Type: application/json`. The body is the
+    event exactly as the stream's `events` channel carries it: `type`, `schema_version`, its own
+    fields, and `id`, the event's cursor. Headers:
+
+    - `MFX-Event-Id`: the event's cursor; de-duplicate on it.
+    - `MFX-Event-Type`: for example `position.closed`.
+    - `MFX-Delivery-Attempt`: 1 for the first try, then 2, 3 and so on; `replay` for an event
+      sent again because you replayed it.
+    - `MFX-Signature`: `t=<unix seconds>,v1=<hex>`.
+
+    **The signature.** `v1` is the lowercase hex of HMAC-SHA256, keyed with the endpoint's secret
+    (its text, UTF-8, exactly as it was shown when the endpoint was registered or rotated), over
+    the bytes `<t>.<body>`: the value of `t`, a full stop, then the body exactly as received. For
+    a day after a rotation the header carries two `v1` values, the new secret's first; accept the
+    delivery if either matches. Compare in constant time, and refuse a `t` more than five minutes
+    from your own clock.
+
+    Test vector: secret `example_secret`, `t` 1790000000, body
+    `{"id":"1790000000000-0","type":"position.closed","schema_version":"1.0"}` gives
+    `MFX-Signature: t=1790000000,v1=190c44d9d5595080ae5682f18de3d08df86b483b8c58bf1adba0fad2033cf422`.
+
+    **Answering.** Any 2xx within the timeout (5 seconds unless the operator has changed it) is
+    delivered. Anything else is a failure: a non-2xx status, a timeout, no connection, a TLS
+    failure, or an address MFX Hub will not call.
+
+    **Retries.** An event that failed is tried again by itself after 10 s, 60 s, 5 min, 30 min
+    and 2 h (the default schedule), while later events go ahead. Delivery is at least once and in
+    no promised order: order by `MFX-Event-Id` where order matters to you. After the last attempt
+    the event is kept as a failure you can read and replay for 7 days by default. An endpoint
+    that has delivered nothing for 24 hours by default while events failed is paused, with the
+    reason on it and `webhook.endpoint_paused` on the stream; resume it to continue from where it
+    stopped.
 - name: maintenance
   description: 'Planned maintenance on the tenant''s terminals: what is scheduled and in progress, what
     is paused and until when, and where each terminal is (term:read)'
@@ -65,6 +102,580 @@ tags:
   description: Tenant-owned Redis push delivery — reserved in v1, not yet available (md:write)
 security:
 - mfxSignature: []
+x-error-catalogue:
+  description: 'Every code an error answer can carry (kind http: ErrorBody.code, with its HTTP status)
+    and every reason a command''s result can carry (kind command: CommandResult.reason). retryable says
+    whether sending the same thing again later can work: for an http code, the same request unchanged;
+    for a command reason, the same order under a new Idempotency-Key. A command whose state is UNKNOWN
+    is never retryable, whatever its reason: check deal history first. A code or reason not listed here
+    may be added later; a client must handle one it does not know.'
+  entries:
+  - code: validation_error
+    kind: http
+    status:
+    - 400
+    - 413
+    - 422
+    retryable: false
+    cause: 'The request cannot be taken as it was sent: a field is missing, malformed or too large.'
+    action: Read details for the part that is wrong, correct the request and send it again.
+  - code: auth_error
+    kind: http
+    status: 401
+    retryable: false
+    cause: 'The request is not signed by a key the platform accepts: headers missing, clock skew, a reused
+      nonce, an unknown or expired key, or a bad signature.'
+    action: Read details.reason; fix the signing, the clock or the key, then send a newly signed request.
+  - code: forbidden
+    kind: http
+    status: 403
+    retryable: false
+    cause: The key does not carry the scope this call needs.
+    action: Use a key with the scope the operation names, or ask for one to be issued.
+  - code: not_found
+    kind: http
+    status: 404
+    retryable: false
+    cause: The thing does not exist, or belongs to another tenant.
+    action: Check the id; do not retry the same request.
+  - code: conflict
+    kind: http
+    status: 409
+    retryable: false
+    cause: The request conflicts with something that already exists, such as a name in use.
+    action: Change the request so it no longer conflicts.
+  - code: state_error
+    kind: http
+    status: 409
+    retryable: false
+    cause: The thing exists but is not in a state this can be done in.
+    action: Read the thing's state and act only when it allows this.
+  - code: unprocessable
+    kind: http
+    status: 422
+    retryable: false
+    cause: The request is well formed but can never work as asked, such as an unsupported broker or server.
+    action: Change what is asked; the same request will never succeed.
+  - code: window_too_wide
+    kind: http
+    status: 422
+    retryable: false
+    cause: The time window asked for is wider than this read serves.
+    action: Ask for a narrower window, in several reads if needed.
+  - code: placement_error
+    kind: http
+    status: 409
+    retryable: false
+    cause: The terminal cannot be placed on any cell.
+    action: Read the message, change the terminal's request or ask the operator.
+  - code: no_farm
+    kind: http
+    status: 409
+    retryable: false
+    cause: No farm the tenant can use fits the terminal.
+    action: Read details.why; change the terminal's requirements or ask the operator.
+  - code: farm_not_in_plan
+    kind: http
+    status: 409
+    retryable: false
+    cause: The farm named is not one the tenant's plan uses.
+    action: Name a farm from the farms list, or leave the farm out.
+  - code: quota_exceeded
+    kind: http
+    status: 409
+    retryable: false
+    cause: A quota of the tenant's plan is reached.
+    action: Free something counted by the quota, or ask for a larger plan.
+  - code: no_room
+    kind: http
+    status: 409
+    retryable: false
+    cause: The terminal's cell cannot carry it at what is asked.
+    action: Ask for less, or retire something on the cell first.
+  - code: destination_refused
+    kind: http
+    status: 409
+    retryable: false
+    cause: The cell named as the destination of a move or drain cannot take the terminals.
+    action: Read details.reason and choose another destination.
+  - code: broker_not_supported
+    kind: http
+    status: 409
+    retryable: false
+    cause: MFX Hub does not support this broker or server now.
+    action: Use a supported broker or server from the catalogue.
+  - code: ambiguous_symbol
+    kind: http
+    status: 409
+    retryable: false
+    cause: The symbol is listed on more than one server or account type.
+    action: Pick one of details.choices and ask again.
+  - code: cursor_too_old
+    kind: http
+    status: 409
+    retryable: false
+    cause: The cursor names an event the stream no longer holds.
+    action: Resume from details.oldest and reconcile what you may have missed.
+  - code: no_terminal_on_server
+    kind: http
+    status: 409
+    retryable: false
+    cause: The tenant has no terminal on the server asked about.
+    action: Create a terminal on that server first.
+  - code: reads_busy
+    kind: http
+    status: 429
+    retryable: true
+    cause: Your reads through terminals on this server are at their limit in flight.
+    action: Ask again after Retry-After; reads inside the store are not limited this way.
+  - code: bar_series_limit
+    kind: http
+    status: 409
+    retryable: false
+    cause: The subscription would take you past the closed-bar series a server allows (symbols times timeframes).
+    action: Ask for fewer timeframes or symbols on this server.
+  - code: execution_not_permitted
+    kind: http
+    status: 403
+    retryable: false
+    cause: The terminal's farm does not carry orders.
+    action: Send orders to a terminal on a farm that executes.
+  - code: farm_frozen
+    kind: http
+    status: 409
+    retryable: true
+    cause: The terminal's farm is inside a test window.
+    action: Send the same request after the window's end in details.
+  - code: farm_disabled
+    kind: http
+    status: 403
+    retryable: false
+    cause: The operator has disabled the terminal's farm.
+    action: Contact the operator; do not retry.
+  - code: maintenance
+    kind: http
+    status: 403
+    retryable: true
+    cause: A planned maintenance window suspends this for you.
+    action: Send the same request after details.ends_at.
+  - code: depth_not_offered
+    kind: http
+    status: 422
+    retryable: false
+    cause: The terminal's farm offers no market depth.
+    action: Do not ask for depth on this farm.
+  - code: tenant_disabled
+    kind: http
+    status: 403
+    retryable: false
+    cause: The operator has disabled the tenant.
+    action: Contact the operator; nothing works until the tenant is enabled.
+  - code: tenant_suspended
+    kind: http
+    status: 403
+    retryable: false
+    cause: The tenant is suspended and this is not a read allowed during its grace.
+    action: Contact the operator; reads still work until details.reads_until.
+  - code: operation_in_progress
+    kind: http
+    status: 409
+    retryable: true
+    cause: Another lifecycle operation is running on the terminal.
+    action: Wait for it to finish, then send the same request.
+  - code: positions_open
+    kind: http
+    status: 409
+    retryable: false
+    cause: The terminal has open positions.
+    action: Close them first, or send confirm_open_positions.
+  - code: superseded_by_waiting
+    kind: http
+    status: 409
+    retryable: false
+    cause: A stronger operation is already waiting for the terminal.
+    action: Follow the operation in details.operation_id instead.
+  - code: rebuild_not_supported
+    kind: http
+    status: 409
+    retryable: false
+    cause: The cell's software is older than a rebuild needs.
+    action: Ask the operator; the cell must be updated first.
+  - code: attach_not_supported
+    kind: http
+    status: 409
+    retryable: false
+    cause: The cell's software cannot attach an expert advisor yet.
+    action: Ask the operator; the cell must be updated first.
+  - code: not_customer_code_farm
+    kind: http
+    status: 409
+    retryable: false
+    cause: The terminal's farm does not run customer code.
+    action: Attach expert advisors only to terminals on a farm that runs customer code.
+  - code: ea_not_approved
+    kind: http
+    status: 409
+    retryable: false
+    cause: The expert advisor version is not approved.
+    action: Wait for approval, or attach an approved version.
+  - code: build_mismatch
+    kind: http
+    status: 409
+    retryable: false
+    cause: The version was not built for the MetaTrader 5 build the terminal's farm runs.
+    action: Wait for the build for the farm's MetaTrader 5 build, or attach a version built for it.
+  - code: ea_attached
+    kind: http
+    status: 409
+    retryable: false
+    cause: The terminal already carries an expert advisor.
+    action: Detach it first.
+  - code: no_ea_attached
+    kind: http
+    status: 409
+    retryable: false
+    cause: No expert advisor is attached to the terminal.
+    action: Nothing to detach; check the terminal's state.
+  - code: not_awaiting_confirmation
+    kind: http
+    status: 409
+    retryable: false
+    cause: The terminal's expert advisor is not waiting for a confirmation.
+    action: Confirm only after a green trial on a real-money account; read the attachment's state.
+  - code: confirmation_refused
+    kind: http
+    status: 403
+    retryable: false
+    cause: The confirmation code is wrong, used or expired, or the confirmation is locked.
+    action: Use the code from the newest trial email; after five refusals in a row ask the operator.
+  - code: force_not_needed
+    kind: http
+    status: 409
+    retryable: false
+    cause: The graceful route can still finish, so a forced action is not needed.
+    action: Wait, or force after details.force_available_at.
+  - code: confirm_force_required
+    kind: http
+    status: 409
+    retryable: false
+    cause: A forced action does not wait for the cell.
+    action: Send confirm_force to proceed.
+  - code: terminal_not_retired
+    kind: http
+    status: 409
+    retryable: false
+    cause: A terminal on the cell would not retire, so the cell was not retired.
+    action: Read details.refusal, deal with that terminal, then try again.
+  - code: second_reason_required
+    kind: http
+    status: 422
+    retryable: false
+    cause: Retiring the cell with its terminals ends trading while markets or positions are open.
+    action: Send second_reason to confirm.
+  - code: cooldown
+    kind: http
+    status: 429
+    retryable: true
+    cause: The terminal was restarted too recently.
+    action: Send the same request after Retry-After.
+  - code: tenant_rate
+    kind: http
+    status: 429
+    retryable: true
+    cause: The tenant has started too many operations in the window.
+    action: Send the same request after Retry-After.
+  - code: concurrency
+    kind: http
+    status: 429
+    retryable: true
+    cause: Too many of the tenant's operations are running at once.
+    action: Send the same request after Retry-After, once some have finished.
+  - code: farm_capacity
+    kind: http
+    status: 429
+    retryable: true
+    cause: Too many terminals of the farm are restarting at once.
+    action: Send the same request after Retry-After.
+  - code: rate_limited
+    kind: http
+    status: 429
+    retryable: true
+    cause: 'A limit is used up for now: details.limit names it (commands_per_s for execution commands;
+      on the stream ws_conns, account_channels_per_conn or md_msgs_per_s, as an error op), and for commands_per_s
+      and ws_conns details.scope says whether the tenant''s ceiling or the key''s own cap was reached.'
+    action: Send the same request after Retry-After, and pace below the figure GET /v1/usage serves.
+  - code: upstream_error
+    kind: http
+    status: 503
+    retryable: true
+    cause: Your terminal, the broker or a service the platform calls did not answer as needed.
+    action: Read details.reason and retry later with backoff; for an order, check its outcome before sending
+      it again.
+  - code: dependency_unavailable
+    kind: http
+    status: 503
+    retryable: true
+    cause: The request was valid and a store the platform needs did not answer.
+    action: Send the same request after Retry-After.
+  - code: internal_error
+    kind: http
+    status: 500
+    retryable: true
+    cause: A fault of the platform's own.
+    action: Retry later with backoff, and report it if it persists.
+  - code: success
+    kind: command
+    status: null
+    retryable: false
+    cause: The command did what it asked.
+    action: Nothing; success is not an error.
+  - code: requote
+    kind: command
+    status: null
+    retryable: true
+    cause: The broker requoted the price.
+    action: Send the order again under a new Idempotency-Key at the current price.
+  - code: instrument_disabled
+    kind: command
+    status: null
+    retryable: false
+    cause: The broker has disabled trading on the symbol.
+    action: Do not send orders for this symbol until the broker enables it.
+  - code: no_liquidity
+    kind: command
+    status: null
+    retryable: true
+    cause: The broker had no liquidity to fill the order.
+    action: Send it again later under a new Idempotency-Key.
+  - code: market_closed
+    kind: command
+    status: null
+    retryable: false
+    cause: The market for the symbol is closed.
+    action: Send it when the symbol's session is open.
+  - code: invalid_stops
+    kind: command
+    status: null
+    retryable: false
+    cause: The stop loss or take profit is too close to the price or on the wrong side.
+    action: Correct the stops against the symbol's stops level and send again.
+  - code: invalid_volume
+    kind: command
+    status: null
+    retryable: false
+    cause: The volume is outside the symbol's minimum, maximum or step.
+    action: Correct the volume against the symbol's limits.
+  - code: insufficient_funds
+    kind: command
+    status: null
+    retryable: false
+    cause: The account does not have the margin for the order.
+    action: Reduce the volume or add funds.
+  - code: trade_disabled
+    kind: command
+    status: null
+    retryable: false
+    cause: Trading is disabled for the account or by the broker.
+    action: Check the account with the broker; do not retry.
+  - code: rejected_other
+    kind: command
+    status: null
+    retryable: false
+    cause: The broker refused the order for a reason not classified further.
+    action: Read retcode_text and comment_raw for the broker's words.
+  - code: rate_limited
+    kind: command
+    status: null
+    retryable: true
+    cause: Too many requests reached the broker or the terminal at once.
+    action: Send it again later under a new Idempotency-Key.
+  - code: expired
+    kind: command
+    status: null
+    retryable: true
+    cause: The command passed its expiry before it could run, and never executed.
+    action: Send it again under a new Idempotency-Key if it is still wanted.
+  - code: timeout
+    kind: command
+    status: null
+    retryable: false
+    cause: No answer came in time; the order may or may not have reached the broker.
+    action: Do not resend blindly; check deal history and open positions first.
+  - code: transport_error
+    kind: command
+    status: null
+    retryable: true
+    cause: The command could not be carried to the terminal, and never executed.
+    action: Send it again under a new Idempotency-Key.
+  - code: unknown
+    kind: command
+    status: null
+    retryable: false
+    cause: The outcome could not be classified.
+    action: Check deal history and open positions before acting.
+  - code: signature
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal refused the command's signature.
+    action: Contact support; this is a platform fault, not yours.
+  - code: unknown_key
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal does not yet know the key the command was signed with.
+    action: Contact support if it persists; the platform resolves it.
+  - code: not_assigned
+    kind: command
+    status: null
+    retryable: true
+    cause: The terminal was not assigned to the cell that received the command, for example during a move.
+    action: Send it again under a new Idempotency-Key.
+  - code: malformed
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal could not read the command.
+    action: Contact support; this is a platform fault.
+  - code: invalid_request
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal refused the command before the broker saw it, because the broker would refuse
+      it.
+    action: Correct the request as the reason text says.
+  - code: invalid_comment
+    kind: command
+    status: null
+    retryable: false
+    cause: The order comment is not one the terminal can send.
+    action: Shorten or simplify the comment.
+  - code: unknown_symbol
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal does not list the symbol.
+    action: Use a symbol from the terminal's catalogue.
+  - code: terminal_unavailable
+    kind: command
+    status: null
+    retryable: true
+    cause: The terminal could not take commands at that moment.
+    action: Send it again under a new Idempotency-Key once the terminal is ACTIVE.
+  - code: execution_not_permitted
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal's farm does not carry orders.
+    action: Send orders to a terminal on a farm that executes.
+  - code: not_executed
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal did not execute the command.
+    action: Read the reason text; correct and send again only if it says how.
+  - code: not_dispatched
+    kind: command
+    status: null
+    retryable: false
+    cause: The command was not handed to the terminal.
+    action: Check the command's state, and send a new command if needed.
+  - code: interrupted
+    kind: command
+    status: null
+    retryable: false
+    cause: The command was interrupted while running; its outcome is being settled.
+    action: Wait for command.resolved, or until resolve_by; never resend while it is UNKNOWN.
+  - code: ambiguous
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal could not tell whether the order reached the broker.
+    action: Wait for command.resolved, or until resolve_by; never resend while it is UNKNOWN.
+  - code: no_executor
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal had nothing able to run this command.
+    action: Contact support.
+  - code: no_config
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal was missing the configuration this command needs.
+    action: Contact support.
+  - code: terminal_not_launched
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal was not running.
+    action: Wait until the terminal is ACTIVE, then send a new command.
+  - code: unknown_type
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal does not know this kind of command.
+    action: Contact support.
+  - code: handler_failed
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal failed while handling the command.
+    action: Check deal history before acting, and contact support if it repeats.
+  - code: cooldown
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal was restarted too recently to restart again.
+    action: Wait for retry_after_s, then ask again.
+  - code: shutdown_timeout
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal did not stop in time during a restart.
+    action: Read the operation; the platform recovers it.
+  - code: terminal_removed
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal was removed while the operation ran.
+    action: Nothing to do on that terminal.
+  - code: deadline
+    kind: command
+    status: null
+    retryable: false
+    cause: The operation did not finish by its deadline.
+    action: Read the operation's state and ask again if needed.
+  - code: no_tick
+    kind: command
+    status: null
+    retryable: false
+    cause: No price arrived for the symbol in time.
+    action: Ask again later, or check the symbol's session.
+  - code: symbol_unknown
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal does not list the symbol.
+    action: Use a symbol from the terminal's catalogue.
+  - code: journal_unreadable
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal's journal could not be read.
+    action: Ask again later.
+  - code: deals_unreadable
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal's deal history could not be read.
+    action: Ask again later.
+  - code: maintenance
+    kind: command
+    status: null
+    retryable: true
+    cause: A maintenance window refused the queued order before it ran; nothing reached the broker.
+    action: Send it again under a new Idempotency-Key after the window ends.
 components:
   securitySchemes:
     mfxSignature:
@@ -235,6 +846,10 @@ components:
             cursor_too_old: 409. The cursor names an event the stream no longer holds; `details.oldest`
               is the oldest it does
             no_terminal_on_server: 409. The tenant has no terminal on that server to ask
+            reads_busy: 429. Reads through your terminals on this server are at their limit in flight;
+              Retry-After
+            bar_series_limit: 409. The subscription would pass the closed-bar series a server allows;
+              `details` has the limit and what is in use
             execution_not_permitted: 403. The terminal's farm does not carry orders
             farm_frozen: 409. The terminal's farm is inside a test window; `details` names its end
             farm_disabled: 403. The operator has disabled the terminal's farm
@@ -257,6 +872,10 @@ components:
               the build for the farm''s MetaTrader build stands: `{state: queued | running | failed, failure}`'
             ea_attached: 409. The terminal already carries an expert advisor; detach it first
             no_ea_attached: 409. No expert advisor is attached to the terminal
+            not_awaiting_confirmation: 409. The terminal's expert advisor is not waiting for a confirmation;
+              `details.state` says where it stands
+            confirmation_refused: 403. The confirmation code is wrong, used or expired, or five refusals
+              in a row locked the confirmation; the answer does not say which
             force_not_needed: 409. The graceful route can still finish; `details.force_available_at`
             confirm_force_required: 409. A forced retire does not wait for the cell; send `confirm_force`
             terminal_not_retired: 409. A terminal on the cell would not retire, so the cell was not retired;
@@ -268,7 +887,8 @@ components:
             tenant_rate: 429. The tenant has started too many operations in the window; `Retry-After`
             concurrency: 429. Too many of the tenant's operations are running at once; `Retry-After`
             farm_capacity: 429. Too many terminals of the farm are restarting at once; `Retry-After`
-            rate_limited: 429. The general request budget; `Retry-After`
+            rate_limited: 429. A limit, named in `details.limit`, the tenant's ceiling or the key's cap
+              as `details.scope` says; `Retry-After`
             upstream_error: 503 (never 502 or 504, whose bodies the edge replaces). A cell, the broker
               or a service the platform calls did not answer as the platform needs; `details.reason` says
               why where there is one
@@ -456,8 +1076,8 @@ components:
           description: The operation that replaced this one; set only on SUPERSEDED
         requested_by:
           type: string
-          description: key:<key id>, admin.<email> for an operator, or system.healing for an automatic
-            recovery step
+          description: key:<key id>, admin.<email> for an operator, system.healing for an automatic recovery
+            step, or system.maintenance for a maintenance window's restart
         reason:
           type: string
         forced_stop:
@@ -598,6 +1218,10 @@ components:
           - active_passive
           - active_active
           default: none
+          description: 'The older word for `ha`: active_active asks for HA in hot mode and active_passive
+            in warm mode. Sent with `ha` saying something else is 422'
+        ha:
+          $ref: '#/components/schemas/TerminalHa'
         refresh_ms:
           type: integer
           enum:
@@ -614,6 +1238,62 @@ components:
             the farm''s rate is 422 with details.allowed. With no farm named, only farms that allow the
             rate are considered, and none with room is 409 no_farm (why no_room). A flat account is read
             every 60 s whatever this says'
+    TerminalHa:
+      type: object
+      additionalProperties: false
+      description: MFX Hub HA for one terminal. On, MFX Hub runs a second terminal on the same broker
+        login, on separate hardware, ready to take over; you keep this terminal's id for everything and
+        never see the second one. It is not in your terminal quota, your usage or your terminals per login,
+        and it is not billed while HA is not priced. It is one more session on the login, so the broker's
+        limit of sessions applies.
+      required:
+      - enabled
+      properties:
+        enabled:
+          type: boolean
+        mode:
+          type:
+          - string
+          - 'null'
+          enum:
+          - hot
+          - warm
+          - null
+          description: 'hot: the second terminal stays logged in and takes over at once. warm: it waits
+            on reserved capacity without a broker session and takes over after one login; not offered
+            yet (422 `unprocessable`). Omitted: the mode this terminal already has, else hot.'
+    TenantTerminalHa:
+      type: object
+      required:
+      - enabled
+      - mode
+      - fallback_state
+      description: 'This terminal''s MFX Hub HA. `enabled: false`, `mode: null` and `fallback_state: off`
+        when HA is not on'
+      properties:
+        enabled:
+          type: boolean
+        mode:
+          type:
+          - string
+          - 'null'
+          enum:
+          - hot
+          - warm
+          - null
+          description: The mode in effect; null when HA is off
+        fallback_state:
+          type: string
+          enum:
+          - 'off'
+          - starting
+          - ready
+          - waiting_for_capacity
+          - repairing
+          description: 'Where the second terminal stands. off: HA is not on. starting: it is being created,
+            placed or logged in. ready: it is logged in and healthy. waiting_for_capacity: there is no
+            separate hardware in the farm to place it on yet. repairing: it exists and is not healthy
+            (offline, failed, degraded or being moved).'
     TerminalUpdate:
       type: object
       additionalProperties: false
@@ -694,6 +1374,18 @@ components:
           $ref: '#/components/schemas/Ref'
         server:
           $ref: '#/components/schemas/Ref'
+        server_kind:
+          type:
+          - string
+          - 'null'
+          enum:
+          - demo
+          - live
+          - null
+          description: The kind of the terminal's server as the operator recorded it, the `kind` of `GET
+            /brokers/{id}/servers`. Known before any login, so it answers demo or live while a login is
+            refused. Once the terminal has logged in, `GET /terminals/{id}/account` → `profile.account_type`
+            is the account's own word (demo, live or contest) and wins.
         login_masked:
           type:
           - string
@@ -779,6 +1471,22 @@ components:
                   the broker''s, not MFX Hub''s. Null otherwise (not attributed). `terminal.condition_changed`
                   carries the same field, and is sent again when a slow feed becomes a quiet broker or
                   the reverse.'
+              broker_words:
+                type:
+                - string
+                - 'null'
+                maxLength: 120
+                description: 'As `Condition.broker_words`: the broker''s own words when it refused the
+                  login'
+              refusal_kind:
+                type:
+                - string
+                - 'null'
+                enum:
+                - invalid_account
+                - other
+                - null
+                description: As `Condition.refusal_kind`
         instruments:
           type: array
           items:
@@ -807,6 +1515,8 @@ components:
           - writer
           - standby
           - null
+        ha:
+          $ref: '#/components/schemas/TenantTerminalHa'
         terminal_build:
           type:
           - integer
@@ -1279,6 +1989,26 @@ components:
             tp, stop-out, a person at the terminal), and when the command''s outcome was not yet recorded
             when the close was told; `magic` and `comment` here are the position''s own'
     PositionOpened:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        event_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190233:open
+        ticket: '58190233'
+        symbol: EURUSD
+        side: buy
+        volume: '0.10'
+        open_price: '1.08412'
+        price_current: '1.08420'
+        sl: '1.08100'
+        tp: '1.09000'
+        profit: '0.80'
+        swap: '0.00'
+        open_time: '2026-10-23T09:15:02Z'
+        magic: '0'
+        comment: ''
+        ts: '2026-10-23T09:15:02Z'
+        idempotency_key: client-order-0001
+        order_ticket: '58190233'
       type: object
       description: '`data` of a `position.opened` message on the `events` channel: sent once when a position
         opens on the terminal''s account, by anyone (MFX Hub, an expert advisor, the broker''s own apps).
@@ -1364,7 +2094,31 @@ components:
             such command on this terminal recorded SUCCEEDED naming this position within the last 30 s.
             Absent for a position the platform did not open (an expert advisor, the broker''s apps) or
             whose command outcome was not yet recorded'
+        order_ticket:
+          type: string
+          pattern: ^[0-9]+$
+          description: 'The MT5 ticket of the order whose deal opened the position, an integer as text:
+            for a position opened by a pending order, that order''s ticket, the same order `position_ticket`
+            names on its `order.closed`. Absent from a terminal whose agent does not report it yet'
     PositionModified:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        event_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190233:modify:1.08412:1.09000:0.05
+        ticket: '58190233'
+        symbol: EURUSD
+        side: buy
+        volume: '0.05'
+        open_price: '1.08412'
+        price_current: '1.08455'
+        sl: '1.08412'
+        tp: '1.09000'
+        profit: '2.15'
+        swap: '0.00'
+        open_time: '2026-10-23T09:15:02Z'
+        magic: '0'
+        comment: ''
+        ts: '2026-10-23T09:42:10Z'
       type: object
       description: '`data` of a `position.modified` message on the `events` channel: sent once each time
         the terminal reads an open position with a different stop loss, take profit or volume than it
@@ -1449,7 +2203,368 @@ components:
           description: 'The Idempotency-Key of the platform command that changed it (modifyPosition, closePositionPartial,
             a trailing stop): the newest such command on this terminal recorded SUCCEEDED naming this
             position within the last 30 s. Absent for a change the platform did not make'
+    OrderPlaced:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        event_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190240:order:placed
+        ticket: '58190240'
+        symbol: EURUSD
+        side: buy
+        order_type: limit
+        volume: '0.10'
+        price: '1.08000'
+        sl: '1.07700'
+        tp: '1.08600'
+        placed_time: '2026-10-23T09:20:00Z'
+        expires_at: '2026-10-23T21:00:00Z'
+        magic: '0'
+        comment: ''
+        ts: '2026-10-23T09:20:00Z'
+        idempotency_key: client-order-0002
+      type: object
+      description: '`data` of an `order.placed` message on the `events` channel: sent once when a pending
+        order (a buy or sell limit, stop or stop-limit order) appears on the terminal''s account, placed
+        by anyone (MFX Hub, an expert advisor, the broker''s own apps). The order in the words of `PendingOrder`.
+        On the stream every value is text, as on every event, and a field with no value is left out.'
+      required:
+      - schema_version
+      - terminal_id
+      - event_id
+      - ticket
+      - symbol
+      - side
+      - order_type
+      - volume
+      - price
+      - placed_time
+      - magic
+      - comment
+      - ts
+      properties:
+        schema_version:
+          type: string
+          description: The payload's version; 1
+        terminal_id:
+          type: string
+          format: uuid
+          description: 'The join key: the terminal whose account holds the order'
+        event_id:
+          type: string
+          description: 'Deterministic per order: a replay after a cell restart carries the same one and
+            is sent once'
+        ticket:
+          type: string
+          pattern: ^[0-9]+$
+          description: 'The order''s MT5 ticket, an integer as text: the key the pending list and the
+            other order events carry for it'
+        symbol:
+          type: string
+        side:
+          type: string
+          enum:
+          - buy
+          - sell
+        order_type:
+          type: string
+          enum:
+          - limit
+          - stop
+          - stop_limit
+        volume:
+          type: string
+          description: Lots still to fill, a decimal as text
+        price:
+          type: string
+          description: The order's price, a decimal as text; on a stop-limit order the stop price
+        stop_limit_price:
+          type: string
+          description: A stop-limit order's second price, the limit placed when the market reaches `price`;
+            absent on every other order
+        sl:
+          type: string
+          description: The stop loss; absent when none
+        tp:
+          type: string
+          description: The take profit; absent when none
+        placed_time:
+          type: string
+          format: date-time
+          description: When it was placed, UTC
+        expires_at:
+          type: string
+          format: date-time
+          description: When it expires, UTC; absent when good till cancelled
+        magic:
+          type: string
+          pattern: ^-?[0-9]+$
+          description: The MT5 magic number, an integer as text; 0 when none
+        comment:
+          type: string
+          description: The MT5 comment; empty when none
+        ts:
+          type: string
+          format: date-time
+          description: 'When it was placed, UTC: the same instant as `placed_time`'
+        idempotency_key:
+          type: string
+          description: 'The Idempotency-Key of the platform command that placed it (placeOrder): the newest
+            such command on this terminal recorded SUCCEEDED naming this order within the last 30 s. Absent
+            for an order the platform did not place, or whose command outcome was not yet recorded'
+    OrderModified:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        event_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190240:order:modify:1.07950:1.07700:1.08600:2026-10-23T21:00:00Z:0.10
+        ticket: '58190240'
+        symbol: EURUSD
+        side: buy
+        order_type: limit
+        volume: '0.10'
+        price: '1.07950'
+        sl: '1.07700'
+        tp: '1.08600'
+        placed_time: '2026-10-23T09:20:00Z'
+        expires_at: '2026-10-23T21:00:00Z'
+        magic: '0'
+        comment: ''
+        ts: '2026-10-23T09:31:12Z'
+        idempotency_key: client-modify-0001
+      type: object
+      description: '`data` of an `order.modified` message on the `events` channel: sent once each time
+        the terminal reads a pending order with a different price, stop-limit price, stop loss, take profit,
+        expiry or volume than it last read, set by anyone; a partial fill that leaves the rest pending
+        is one. Each message is the order as it now stands, not the difference. On the stream every value
+        is text, and a field with no value is left out.'
+      required:
+      - schema_version
+      - terminal_id
+      - event_id
+      - ticket
+      - symbol
+      - side
+      - order_type
+      - volume
+      - price
+      - placed_time
+      - magic
+      - comment
+      - ts
+      properties:
+        schema_version:
+          type: string
+          description: The payload's version; 1
+        terminal_id:
+          type: string
+          format: uuid
+          description: 'The join key: the terminal whose account holds the order'
+        event_id:
+          type: string
+          description: 'Deterministic per change (the ticket with its new price, stop loss, take profit,
+            expiry and volume): a replay after a cell restart carries the same one and is sent once'
+        ticket:
+          type: string
+          pattern: ^[0-9]+$
+          description: 'The order''s MT5 ticket, an integer as text: the key the pending list and the
+            other order events carry for it'
+        symbol:
+          type: string
+        side:
+          type: string
+          enum:
+          - buy
+          - sell
+        order_type:
+          type: string
+          enum:
+          - limit
+          - stop
+          - stop_limit
+        volume:
+          type: string
+          description: Lots still to fill, a decimal as text
+        price:
+          type: string
+          description: The order's price, a decimal as text; on a stop-limit order the stop price
+        stop_limit_price:
+          type: string
+          description: A stop-limit order's second price, the limit placed when the market reaches `price`;
+            absent on every other order
+        sl:
+          type: string
+          description: The stop loss; absent when none
+        tp:
+          type: string
+          description: The take profit; absent when none
+        placed_time:
+          type: string
+          format: date-time
+          description: When it was placed, UTC
+        expires_at:
+          type: string
+          format: date-time
+          description: When it expires, UTC; absent when good till cancelled
+        magic:
+          type: string
+          pattern: ^-?[0-9]+$
+          description: The MT5 magic number, an integer as text; 0 when none
+        comment:
+          type: string
+          description: The MT5 comment; empty when none
+        ts:
+          type: string
+          format: date-time
+          description: When the terminal saw the change, UTC
+        idempotency_key:
+          type: string
+          description: 'The Idempotency-Key of the platform command that changed it (modifyOrder): the
+            newest such command on this terminal recorded SUCCEEDED naming this order within the last
+            30 s. Absent for a change the platform did not make'
+    OrderClosed:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        event_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190240:order:closed
+        ticket: '58190240'
+        symbol: EURUSD
+        side: buy
+        order_type: limit
+        volume: '0.10'
+        price: '1.07950'
+        sl: '1.07700'
+        tp: '1.08600'
+        placed_time: '2026-10-23T09:20:00Z'
+        expires_at: '2026-10-23T21:00:00Z'
+        magic: '0'
+        comment: ''
+        reason: filled
+        order_state_raw: '4'
+        position_ticket: '58190240'
+        ts: '2026-10-23T10:02:47Z'
+      type: object
+      description: '`data` of an `order.closed` message on the `events` channel: sent once when a pending
+        order leaves the account''s pending list, for whatever reason. `reason` is the order''s own state
+        in the terminal''s order history (MT5 `ORDER_STATE`): `filled`, `cancelled`, `expired`, `rejected`;
+        `unknown` when the terminal did not find it in its history within 60 s, or MT5 gave a state outside
+        that list. The platform never infers it from the expiry or from a nearby position. A fill carries
+        `position_ticket`, the position it opened or, on a netting account, went into; `position.opened`
+        carries the same order''s ticket as `order_ticket`. The order as it stood when it left. On the
+        stream every value is text, and a field with no value is left out.'
+      required:
+      - schema_version
+      - terminal_id
+      - event_id
+      - ticket
+      - symbol
+      - side
+      - order_type
+      - volume
+      - price
+      - placed_time
+      - magic
+      - comment
+      - reason
+      - ts
+      properties:
+        schema_version:
+          type: string
+          description: The payload's version; 1
+        terminal_id:
+          type: string
+          format: uuid
+          description: 'The join key: the terminal whose account holds the order'
+        event_id:
+          type: string
+          description: 'Deterministic per order: a replay after a cell restart carries the same one and
+            is sent once'
+        ticket:
+          type: string
+          pattern: ^[0-9]+$
+          description: 'The order''s MT5 ticket, an integer as text: the key the pending list and the
+            other order events carry for it'
+        symbol:
+          type: string
+        side:
+          type: string
+          enum:
+          - buy
+          - sell
+        order_type:
+          type: string
+          enum:
+          - limit
+          - stop
+          - stop_limit
+        volume:
+          type: string
+          description: Lots still to fill, a decimal as text
+        price:
+          type: string
+          description: The order's price, a decimal as text; on a stop-limit order the stop price
+        stop_limit_price:
+          type: string
+          description: A stop-limit order's second price, the limit placed when the market reaches `price`;
+            absent on every other order
+        sl:
+          type: string
+          description: The stop loss; absent when none
+        tp:
+          type: string
+          description: The take profit; absent when none
+        placed_time:
+          type: string
+          format: date-time
+          description: When it was placed, UTC
+        expires_at:
+          type: string
+          format: date-time
+          description: When it expires, UTC; absent when good till cancelled
+        magic:
+          type: string
+          pattern: ^-?[0-9]+$
+          description: The MT5 magic number, an integer as text; 0 when none
+        comment:
+          type: string
+          description: The MT5 comment; empty when none
+        reason:
+          type: string
+          enum:
+          - filled
+          - cancelled
+          - expired
+          - rejected
+          - unknown
+          description: 'Why it left the pending list: MT5 ORDER_STATE in plain words; unknown when it
+            could not be read'
+        order_state_raw:
+          type: string
+          pattern: ^[0-9]+$
+          description: MT5's own ORDER_STATE code, an integer as text; absent when the order was not found
+            in the history
+        position_ticket:
+          type: string
+          pattern: ^[0-9]+$
+          description: On a fill, the MT5 ticket of the position it opened or went into, an integer as
+            text; absent otherwise
+        ts:
+          type: string
+          format: date-time
+          description: 'When it left, UTC: the order''s time done in the history, or when the terminal
+            saw it gone'
+        idempotency_key:
+          type: string
+          description: 'On a cancel, the Idempotency-Key of the platform command that cancelled it (cancelOrder):
+            the newest such command on this terminal recorded SUCCEEDED naming this order within the last
+            30 s. Absent on a fill, an expiry or a rejection, and on a cancel the platform did not make'
     TerminalStateChanged:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        from: LOGGING_IN
+        to: ACTIVE
+        reason: account verified, broker connected
+        transition_id: 5b1d7e0a-2c44-4f0e-9a51-7d3b8c6e1f20
+        ts: '2026-10-23T09:02:41Z'
       type: object
       description: '`data` of a `terminal.state_changed` message on the `events` channel: sent once for
         each move of a terminal''s lifecycle state, after the move is recorded, whoever made it (you,
@@ -1511,6 +2626,14 @@ components:
           format: date-time
           description: When it moved, UTC
     TerminalConditionChanged:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        condition: BrokerConnected
+        status: failed
+        reason: no connection to the broker's server
+        since: '2026-10-23T10:05:13Z'
+        attributed_to: broker
       type: object
       description: '`data` of a `terminal.condition_changed` message on the `events` channel: sent once
         when one of a terminal''s observed conditions changes status, and when `TicksFresh` moves between
@@ -1556,7 +2679,27 @@ components:
           - ''
           description: 'As `Condition.attributed_to`: `broker` for a broker''s feed fault, empty when
             not attributed'
+        broker_words:
+          type: string
+          description: As `Condition.broker_words`; empty unless the reason is `login_refused`
+        refusal_kind:
+          type: string
+          enum:
+          - invalid_account
+          - other
+          - ''
+          description: As `Condition.refusal_kind`; empty unless the reason is `login_refused`
     TerminalOperationChanged:
+      example:
+        schema_version: '1'
+        operation_id: 9c2e4b71-0d3a-4e8f-b6a2-1f5c7d9e3a40
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        kind: restart
+        state: SUCCEEDED
+        step: RELAUNCHING
+        forced_stop: 'false'
+        cooldown_until: '2026-10-23T10:20:00Z'
+        finished_at: '2026-10-23T10:15:31Z'
       type: object
       description: '`data` of a `terminal.operation_changed` message on the `events` channel: sent when
         a governed operation on a terminal (`TerminalOperation`: a restart, a rebuild, a move, a retire,
@@ -1628,7 +2771,66 @@ components:
         finished_at:
           type: string
           description: UTC date-time when it ended; empty while it runs
+    TerminalHaSwitched:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        reason: broker_lost
+        at: '2026-11-01T22:04:31.120Z'
+        took_ms: '40'
+      type: object
+      description: '`data` of a `terminal.ha_switched` message on the `events` channel: MFX Hub HA moved
+        the terminal to its second terminal, which now carries its orders, quotes and account. The terminal''s
+        id is the same before and after; nothing about the second terminal is sent. On the stream every
+        value is text, as on every event.'
+      required:
+      - schema_version
+      - terminal_id
+      - reason
+      - at
+      - took_ms
+      properties:
+        schema_version:
+          type: string
+          description: The payload's version; 1
+        terminal_id:
+          type: string
+          format: uuid
+          description: The terminal, as you address it
+        reason:
+          type: string
+          enum:
+          - order
+          - broker_lost
+          - unresponsive
+          - terminal_failed
+          - process_gone
+          - operator
+          description: 'Why it switched. order: an order arrived while the first terminal could not carry
+            it, and it was placed through the second. broker_lost: the first terminal lost its broker
+            connection. unresponsive: the first terminal stopped reporting. terminal_failed and process_gone:
+            the first terminal failed or its MetaTrader 5 process ended. operator: MFX Hub support switched
+            it.'
+        at:
+          type: string
+          description: UTC date-time of the switch, to the millisecond
+        took_ms:
+          type: string
+          pattern: ^[0-9]+$
+          description: Milliseconds the switch took, an integer as text
     AccountProfileChanged:
+      example:
+        schema_version: '1'
+        terminal_id: 0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101
+        currency: USD
+        leverage: '500'
+        company: Example Broker Ltd
+        account_type: demo
+        margin_mode: hedging
+        trade_allowed: 'true'
+        expert_allowed: 'true'
+        changed: '["leverage"]'
+        observed_at: '2026-10-23T09:00:00Z'
       type: object
       description: '`data` of an `account.profile_changed` message on the `events` channel: the terminal
         reads its account''s slow facts (`AccountProfile`) every 60 seconds and sends this when any of
@@ -1719,12 +2921,15 @@ components:
       type: string
       description: 'Final states are SUCCEEDED, FAILED, EXPIRED and REJECTED. UNKNOWN is visible and NOT
         final: the order may have reached the broker and its outcome could not be read (a timeout after
-        send, a lost connection). Reconciliation against the terminal''s deal history resolves it to SUCCEEDED
-        or FAILED on its own. A client must not re-send an order whose command is UNKNOWN, because that
-        is how one fill becomes two. A NOT_EXECUTED answer from the terminal reads REJECTED with its reason.
-        SUCCEEDED means the broker did what the command asked: for a market order, filled; for a pending
-        order (limit, stop, stop_limit), accepted onto the broker''s book with its ticket in `tickets.order`
-        - not filled (OrderPlace).'
+        send, a lost connection). The platform asks the terminal that ran it to read its deal and order
+        history again, every minute, until `resolve_by` (15 minutes after it became UNKNOWN by default),
+        and the answer resolves it to SUCCEEDED, FAILED or REJECTED. `command.unknown` is sent when it
+        becomes UNKNOWN and `command.resolved` when it is resolved. One still UNKNOWN at `resolve_by`
+        stays UNKNOWN, because it may have run, and is resolved by an operator with the tenant. A client
+        must not re-send an order whose command is UNKNOWN, because that is how one fill becomes two.
+        A NOT_EXECUTED answer from the terminal reads REJECTED with its reason. SUCCEEDED means the broker
+        did what the command asked: for a market order, filled; for a pending order (limit, stop, stop_limit),
+        accepted onto the broker''s book with its ticket in `tickets.order` - not filled (OrderPlace).'
       enum:
       - ACCEPTED
       - ENQUEUED
@@ -1782,7 +2987,8 @@ components:
           type:
           - string
           - 'null'
-          description: Granular reason; null when ok
+          description: Granular reason; null when ok. Every reason, with whether it is retryable, its
+            typical cause and what to do, is in the error catalogue at the root of this document
         retryable:
           type: boolean
           description: Whether sending the same order again, under a NEW Idempotency-Key, can succeed.
@@ -1915,6 +3121,14 @@ components:
           - $ref: '#/components/schemas/CommandResult'
           - type: 'null'
           description: Null until the command has an outcome
+        resolve_by:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: 'While the command is UNKNOWN: until when the platform asks the terminal that ran
+            it to read the outcome again. After it, an operator resolves it with the tenant. Null in every
+            other state'
     CommandOutcome:
       type: object
       description: '`data` of a `command.completed` or `command.failed` message on the `events` channel
@@ -1980,6 +3194,139 @@ components:
           type: string
           description: 'CommandResult.comment: the comment the command sent; empty where it is null or
             the order was placed without one. Always sent'
+    CommandUnknown:
+      type: object
+      description: '`data` of a `command.unknown` message on the `events` channel: sent when a command
+        becomes UNKNOWN, from any state. Its outcome could not be read and it may have reached the broker,
+        so it must not be sent again. The platform asks the terminal that ran it to read the outcome again
+        until `resolve_by`; `command.resolved` follows when it is resolved. Values are text as in CommandOutcome;
+        `state` is UNKNOWN.'
+      required:
+      - schema_version
+      - command_id
+      - idempotency_key
+      - terminal_id
+      - state
+      - retcode
+      - reason
+      - tickets
+      - exec_price
+      - exec_volume
+      - latencies
+      - terminal_state
+      - resolve_by
+      properties:
+        schema_version:
+          type: string
+        command_id:
+          type: string
+          format: uuid
+        idempotency_key:
+          type: string
+        terminal_id:
+          type: string
+          format: uuid
+          description: 'The join key: the terminal the command ran on'
+        state:
+          $ref: '#/components/schemas/CommandState'
+        retcode:
+          type: string
+          description: As CommandOutcome.retcode
+        reason:
+          type: string
+          description: As CommandOutcome.reason
+        tickets:
+          type: string
+          description: CommandTickets as JSON text
+        exec_price:
+          type: string
+          description: Decimal as a string; empty when nothing filled
+        exec_volume:
+          type: string
+          description: Lots, decimal as a string; empty when nothing filled
+        latencies:
+          type: string
+          description: 'JSON text: {"broker_ms": integer or null, "agent_ms": integer or null}'
+        terminal_state:
+          type: string
+          description: As CommandOutcome.terminal_state
+        magic:
+          type: string
+          description: As CommandOutcome.magic
+        comment:
+          type: string
+          description: As CommandOutcome.comment
+        resolve_by:
+          type: string
+          format: date-time
+          description: Until when the platform asks the terminal again (the moment it became UNKNOWN plus
+            the resolve window, 15 minutes by default). Still UNKNOWN after it, an operator resolves it
+            with the tenant, and a later answer still sends command.resolved
+    CommandResolved:
+      type: object
+      description: '`data` of a `command.resolved` message on the `events` channel: sent when an UNKNOWN
+        command reaches its outcome (SUCCEEDED, FAILED or REJECTED), beside the `command.completed` or
+        `command.failed` that outcome sends as always. Values are text as in CommandOutcome and describe
+        the outcome.'
+      required:
+      - schema_version
+      - command_id
+      - idempotency_key
+      - terminal_id
+      - state
+      - retcode
+      - reason
+      - tickets
+      - exec_price
+      - exec_volume
+      - latencies
+      - terminal_state
+      - unknown_since
+      properties:
+        schema_version:
+          type: string
+        command_id:
+          type: string
+          format: uuid
+        idempotency_key:
+          type: string
+        terminal_id:
+          type: string
+          format: uuid
+          description: 'The join key: the terminal the command ran on'
+        state:
+          $ref: '#/components/schemas/CommandState'
+        retcode:
+          type: string
+          description: As CommandOutcome.retcode
+        reason:
+          type: string
+          description: As CommandOutcome.reason
+        tickets:
+          type: string
+          description: CommandTickets as JSON text
+        exec_price:
+          type: string
+          description: Decimal as a string; empty when nothing filled
+        exec_volume:
+          type: string
+          description: Lots, decimal as a string; empty when nothing filled
+        latencies:
+          type: string
+          description: 'JSON text: {"broker_ms": integer or null, "agent_ms": integer or null}'
+        terminal_state:
+          type: string
+          description: As CommandOutcome.terminal_state
+        magic:
+          type: string
+          description: As CommandOutcome.magic
+        comment:
+          type: string
+          description: As CommandOutcome.comment
+        unknown_since:
+          type: string
+          format: date-time
+          description: When the command became UNKNOWN
     Position:
       type: object
       required:
@@ -2247,6 +3594,8 @@ components:
         time:
           type: string
           format: date-time
+          description: When the broker executed the deal, in UTC (converted from the broker server's own
+            clock)
         magic:
           type: integer
         comment:
@@ -2323,6 +3672,85 @@ components:
           items:
             $ref: '#/components/schemas/Candle'
           description: Oldest first by bar time; at most 1000 bars per call
+        source:
+          type: string
+          enum:
+          - store
+          - terminal
+          - store+terminal
+          description: 'Where the bars came from: the platform''s store (no cell), one of your terminals,
+            or closed bars from the store and the forming bar from a terminal'
+        complete_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'For an answer from the store: the oldest bar of the span the platform vouches
+            holds every bar'
+        complete_to:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'For an answer from the store: the newest bar of that span. Holding bars up to
+            it, you are missing none. Older than the last closed boundary while a gap is repaired, with
+            Retry-After'
+    MdCandleClosed:
+      type: object
+      description: 'md.candle_closed on candles:{server_id}:{symbol}:{tf}: a closed bar, once, read by
+        one of your own terminals. Never replayed; prev_ts tells you whether you missed one'
+      required:
+      - schema_version
+      - server_id
+      - symbol
+      - timeframe
+      - ts
+      - o
+      - h
+      - l
+      - c
+      - v
+      - prev_ts
+      properties:
+        schema_version:
+          type: string
+          example: '1'
+        server_id:
+          type: string
+          format: uuid
+        symbol:
+          type: string
+          description: The broker's own name
+        timeframe:
+          type: string
+          enum:
+          - M1
+          - M5
+          - M15
+          - M30
+          - H1
+          - H4
+          - D1
+          - W1
+          - MN1
+        ts:
+          type: string
+          format: date-time
+          description: Bar open time, UTC; a D1 bar opens at the broker's midnight
+        o:
+          type: string
+        h:
+          type: string
+        l:
+          type: string
+        c:
+          type: string
+        v:
+          type: integer
+          description: Tick volume
+        prev_ts:
+          type: string
+          format: date-time
+          description: 'Open time of the bar before this one in the terminal''s history. Not the ts of
+            the last bar you hold: you missed bars; read GET /v1/md/candles from your last ts'
     Tick:
       type: object
       required:
@@ -3118,73 +4546,280 @@ components:
           type: string
           format: date-time
           description: when the platform last heard from the terminal
-    UsageRow:
+    UsageLimit:
       type: object
-      description: One metric's consumption in one period (recorded hourly). Quantities are decimals as
-        strings.
+      description: 'One limit: the figure in force, where it comes from, whether the platform applies
+        it yet, and how much of it is in use where that is measured. Under `key` it is the figure for
+        the calling key; under `tenant` the ceiling for all the tenant''s keys together.'
       required:
-      - metric
-      - quantity
-      - period_start
-      - period_end
+      - limit
+      - source
+      - enforced
+      - used
       properties:
-        metric:
+        limit:
+          type: integer
+          minimum: 1
+          description: 'Under `key`, for commands_per_s, commands_burst and ws_conns: the lower of the
+            key''s cap and the tenant''s ceiling (a key with no cap may use the whole ceiling). A key
+            whose commands_per_s cap applies and that has no commands_burst cap of its own bursts to twice
+            that cap, never past the tenant''s burst (source key_override, key_cap null). Otherwise the
+            figure itself.'
+        source:
           type: string
           enum:
-          - terminal_hours
-          - md_msgs
-          - commands
-          - ws_minutes
-        quantity:
-          type: string
-        period_start:
-          type: string
-          format: date-time
-        period_end:
-          type: string
-          format: date-time
+          - plan
+          - tenant_override
+          - key_override
+          description: Where `limit` comes from. A tenant ceiling is the tenant's own figure, else the
+            plan's. Under `key`, key_override when the key's own cap or figure is what applies.
+        key_cap:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          description: 'Under `key`, for commands_per_s, commands_burst and ws_conns only: the key''s
+            own cap, null when the key has none (the default). Absent elsewhere.'
+        enforced:
+          type: boolean
+          description: 'False while the figure is published and not yet applied to this tenant: a request
+            over it is not refused. True once it is: an execution command over its rate is 429 `rate_limited`
+            with `Retry-After`, and the stream refuses, drops or closes as its limit says, naming the
+            limit in `details.limit`.'
+        used:
+          type:
+          - integer
+          - 'null'
+          description: Current use where the platform measures it; null where it does not yet
     Usage:
       type: object
-      description: What this tenant has consumed and what the calling key may still spend. The limits
-        are the key's own, not the tenant's, so one runaway integration cannot starve a tenant's production
-        traffic; `budget_source` says whether `budget_remaining` is a measurement or the configured allowance,
-        exactly as the `X-MFX-Budget-Source` header does.
+      description: The calling key's and its tenant's limits, each with where it comes from and how much
+        of it is in use. Read it to pace an integration below the limits rather than finding them through
+        429s.
       required:
-      - items
-      - limits
-      - budget_remaining
-      - budget_source
+      - plan
+      - key
+      - tenant
+      - farms
+      - per_login
+      - lifecycle
+      - webhooks
       - as_of
       properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/UsageRow'
-        limits:
-          type: object
-          description: The calling key's ceilings.
-          properties:
-            commands_per_s:
-              type:
-              - integer
-              - 'null'
-            md_msgs_per_s:
-              type:
-              - integer
-              - 'null'
-            ws_conns:
-              type:
-              - integer
-              - 'null'
-        budget_remaining:
-          type: integer
-          minimum: 0
-        budget_source:
+        plan:
           type: string
           enum:
-          - counted
-          - configured
-          - unconfigured
+          - standard
+          - enterprise
+          - system
+          description: The tenant's plan, whose defaults apply where nothing is overridden
+        key:
+          type: object
+          description: The limits as they apply to the calling key. For commands_per_s, commands_burst
+            and ws_conns that is the tenant's ceiling, lowered by the key's own cap where it has one.
+          required:
+          - key_id
+          - commands_per_s
+          - commands_burst
+          - md_msgs_per_s
+          - ws_conns
+          - account_channels_per_conn
+          properties:
+            key_id:
+              type: string
+            commands_per_s:
+              $ref: '#/components/schemas/UsageLimit'
+              description: Execution commands per second, steady
+            commands_burst:
+              $ref: '#/components/schemas/UsageLimit'
+              description: The most execution commands accepted at once; the steady rate refills it
+            md_msgs_per_s:
+              $ref: '#/components/schemas/UsageLimit'
+              description: Market-data messages per second on this key's stream connections
+            ws_conns:
+              $ref: '#/components/schemas/UsageLimit'
+              description: Stream connections open at once
+            account_channels_per_conn:
+              $ref: '#/components/schemas/UsageLimit'
+              description: '`account:{terminal_id}` channels one connection may hold at once'
+        tenant:
+          type: object
+          required:
+          - commands_per_s
+          - commands_burst
+          - ws_conns
+          - terminals
+          properties:
+            commands_per_s:
+              $ref: '#/components/schemas/UsageLimit'
+              description: Execution commands per second, steady, all the tenant's keys together
+            commands_burst:
+              $ref: '#/components/schemas/UsageLimit'
+              description: The most execution commands accepted at once, all keys together; the steady
+                rate refills it
+            ws_conns:
+              $ref: '#/components/schemas/UsageLimit'
+              description: Stream connections open at once, all keys together
+            terminals:
+              type: object
+              description: Terminals the tenant may have, not counting retired ones. A request over it
+                is 409 `quota_exceeded`.
+              required:
+              - limit
+              - used
+              - source
+              properties:
+                limit:
+                  type: integer
+                  minimum: 1
+                used:
+                  type: integer
+                  minimum: 0
+                source:
+                  type: string
+                  enum:
+                  - tenant_override
+                  - platform_default
+        farms:
+          type: array
+          description: The farms the tenant may place a terminal on, each with what one of its cells holds
+            and how many terminals are on it now.
+          items:
+            type: object
+            required:
+            - farm
+            - cap
+            - used
+            properties:
+              farm:
+                $ref: '#/components/schemas/Ref'
+              cap:
+                type:
+                - integer
+                - 'null'
+                description: 'Terminals one cell of the farm holds, not the farm''s total: a farm adds
+                  cells by itself as it fills, so it has no total of its own. Null where no cap is set'
+              used:
+                type: integer
+                minimum: 0
+                description: Terminals on the whole farm now, not counting retired ones. It may be more
+                  than `cap` once the farm has more than one cell
+        per_login:
+          type: object
+          description: How many terminals may run on one broker login.
+          required:
+          - plan_limit
+          - servers
+          properties:
+            plan_limit:
+              type: integer
+              minimum: 0
+              description: '0: only the broker server''s own limit applies'
+            servers:
+              type: array
+              description: Each enabled broker server, with the number of sessions it is known to allow
+                on one login.
+              items:
+                type: object
+                required:
+                - broker
+                - server
+                - max_sessions
+                - max_sessions_source
+                properties:
+                  broker:
+                    $ref: '#/components/schemas/Ref'
+                  server:
+                    $ref: '#/components/schemas/Ref'
+                  max_sessions:
+                    type:
+                    - integer
+                    - 'null'
+                    description: 'Null: not known yet'
+                  max_sessions_source:
+                    type:
+                    - string
+                    - 'null'
+                    enum:
+                    - probed
+                    - limit
+                    - operator
+                    - null
+                    description: '`probed`: seen to hold this many, a lower bound; `limit`: the ceiling
+                      found; `operator`: entered, final'
+        lifecycle:
+          type: object
+          description: The rules a terminal operation (restart, rebuild, move, retire, retry, attach,
+            detach, drain) is refused by.
+          required:
+          - cooldown_s
+          - tenant_rate_per_hour
+          - concurrency
+          - farm_share
+          - queue_max_wait_s
+          properties:
+            cooldown_s:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
+              description: Seconds a terminal rests after an operation of this kind; refused 429 `cooldown`
+            tenant_rate_per_hour:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 1
+              description: Operations of this kind and its kin per tenant per hour; refused 429 `tenant_rate`
+            concurrency:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 1
+              description: Operations of this kind and its kin a tenant may have open at once; refused
+                429 `concurrency`
+            farm_share:
+              type: number
+              description: The share of a farm's terminals that may be in an operation at once (never
+                fewer than one); refused 429 `farm_capacity`
+            queue_max_wait_s:
+              type: integer
+              minimum: 0
+              description: How long a refused operation may wait its turn
+        webhooks:
+          type: object
+          required:
+          - endpoints
+          - timeout_ms
+          - retry_after_seconds
+          - pause_after_hours
+          - failure_days
+          - in_flight_per_endpoint
+          properties:
+            endpoints:
+              type: object
+              required:
+              - limit
+              - used
+              properties:
+                limit:
+                  type: integer
+                  minimum: 1
+                used:
+                  type: integer
+                  minimum: 0
+            timeout_ms:
+              type: integer
+            retry_after_seconds:
+              type: array
+              items:
+                type: integer
+              description: The waits before each retry of a failed delivery
+            pause_after_hours:
+              type: integer
+            failure_days:
+              type: integer
+            in_flight_per_endpoint:
+              type: integer
         as_of:
           type: string
           format: date-time
@@ -3278,6 +4913,8 @@ components:
           - terminal_disconnected
           - report_stale
           - no_ticks_in_session
+          - bars_unwatched
+          - bars_gap
           - null
           description: 'Why the subscription is `degraded`; null in every other state. `symbol_removed`:
             the broker no longer lists the symbol. `subscription_refused`: the broker refused it on every
@@ -3287,7 +4924,10 @@ components:
             of them carries the symbol any more. `no_ticks_in_session`: the symbol''s own hours say it
             is trading and it has not ticked for the silence window (measured at the newest report); it
             recovers on two reports in a row that each bring a new tick inside the window, or when its
-            session closes. Nothing is degraded for silence outside the symbol''s trading session.'
+            session closes. Nothing is degraded for silence outside the symbol''s trading session. `bars_unwatched`:
+            the subscription asks for timeframes and none of your terminals on the server watches the
+            symbol, so no closed bar can be sent. `bars_gap`: a closed-bar series has a gap the platform
+            could not repair (no terminal to read it through); GET says how far it is complete.'
         degraded_since:
           type:
           - string
@@ -3779,6 +5419,174 @@ components:
           type: string
           format: date-time
           description: Absent when the symbol has not ticked
+    MaintenanceWindowChanged:
+      example:
+        schema_version: '1'
+        window_id: 5b1d7e0a-2c44-4f0e-9a51-7d3b8c6e1f20
+        label: MW-0031
+        state: in_progress
+        starts_at: '2026-11-05T10:00:00Z'
+        ends_at: '2026-11-05T12:00:00Z'
+        message: Planned maintenance on 3 of your terminals until about 12:00 UTC
+        terminals: '3'
+        change: eta_moved
+      type: object
+      description: '`data` of a `maintenance.window_changed` message on the `events` channel, and the
+        same event to webhooks: sent when a window is announced to you, starts, its expected end or its
+        message changes, ends or is cancelled. The fields are those of `TenantMaintenance`, as the window
+        stands after the change; `GET /maintenance` answers the same. On the stream every value is text,
+        as on every event.'
+      required:
+      - schema_version
+      - window_id
+      - label
+      - state
+      - starts_at
+      - ends_at
+      - message
+      - terminals
+      - change
+      properties:
+        schema_version:
+          type: string
+          description: The payload's version; 1
+        window_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          description: MW-0031
+        state:
+          type: string
+          enum:
+          - scheduled
+          - in_progress
+          - completed
+          - cancelled
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+          description: 'The current expected end: the ETA while in progress'
+        message:
+          type: string
+          description: The notice as sent to you, with your own counts; empty when the notice is off
+        terminals:
+          type: string
+          description: How many of your terminals are in the window; GET /maintenance/{id}/terminals lists
+            them, each with its own expected time
+        change:
+          type: string
+          enum:
+          - announced
+          - started
+          - eta_moved
+          - message_changed
+          - ended
+          - cancelled
+          description: What moved this time
+    TerminalJournal:
+      type: object
+      required:
+      - terminal_id
+      - from
+      - read_at
+      - lines
+      properties:
+        terminal_id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          enum:
+          - live
+          - last_words
+          description: 'live: read from the running terminal now. last_words: kept by its cell when it
+            stopped'
+        read_at:
+          type: string
+          format: date-time
+          description: 'When the cell read the journal: now for live, the stop for last_words'
+        stopped:
+          type:
+          - string
+          - 'null'
+          enum:
+          - stopped
+          - failed
+          - retired
+          - null
+          description: For last_words, why the cell kept them; null for live
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/JournalLine'
+          description: Newest first
+    JournalLine:
+      type: object
+      required:
+      - ts
+      - source
+      - message
+      properties:
+        ts:
+          type: string
+          format: date-time
+          description: 'UTC: the journal file''s date and the line''s time, converted from the cell''s
+            clock'
+        source:
+          type: string
+          description: The journal's own source column as MetaTrader writes it, e.g. Network, Terminal,
+            Trades
+        message:
+          type: string
+          maxLength: 200
+          description: The line as written, account numbers masked, file paths removed, at most 200 characters.
+            MetaTrader's journal has no level column, so none is given
+    BrokerCatalogue:
+      type: object
+      required:
+      - server_id
+      - account_type
+      - source
+      - catalogue_hash
+      - symbols
+      - refreshed_at
+      properties:
+        server_id:
+          type: string
+          format: uuid
+        account_type:
+          type: string
+          description: The broker's symbol variant, as on GET /brokers/{id}/symbols
+        source:
+          type: string
+          enum:
+          - live
+          - last_known
+          description: As SymbolPage.source
+        catalogue_hash:
+          type: string
+          description: sha256 over every listed symbol's name, spec_hash, description and identity fields,
+            in name order
+        symbols:
+          type: integer
+          description: Symbols listed now (removed ones excluded)
+        refreshed_at:
+          type: string
+          format: date-time
+          description: The newest refreshed_at of its rows
+    BrokerCatalogueList:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BrokerCatalogue'
     SymbolSpecChanged:
       type: object
       description: '`data` of a `symbol.spec_changed` message on the `events` channel: sent once for each
@@ -3823,6 +5631,14 @@ components:
           - trading
           - sessions
           - removed
+          - added
+          - came_back
+          - description
+          - identity
+          description: 'added: new on the catalogue; came_back: listed again after a removal; description:
+            the broker''s long name changed; identity: path, isin, exchange, category, currency_base,
+            basis or calc_mode changed. MetaTrader has no rename: a renamed symbol is removed and added,
+            and isin is how the two may be matched'
         before:
           type:
           - object
@@ -4216,12 +6032,58 @@ components:
           format: date-time
         status:
           $ref: '#/components/schemas/SymbolStatus'
+        path:
+          type:
+          - string
+          - 'null'
+          description: Where the broker files the symbol (SYMBOL_PATH), e.g. Shares\US\NVDA. Null when
+            the broker leaves it empty; never inferred
+        isin:
+          type:
+          - string
+          - 'null'
+          description: SYMBOL_ISIN, as the broker fills it; null when empty
+        exchange:
+          type:
+          - string
+          - 'null'
+          description: SYMBOL_EXCHANGE; null when empty
+        category:
+          type:
+          - string
+          - 'null'
+          description: SYMBOL_CATEGORY, the broker's own free text; null when empty
+        currency_base:
+          type:
+          - string
+          - 'null'
+          description: SYMBOL_CURRENCY_BASE; null when empty
+        basis:
+          type:
+          - string
+          - 'null'
+          description: SYMBOL_BASIS, the underlying asset of a derivative; null when empty
+        calc_mode:
+          type:
+          - string
+          - 'null'
+          description: SYMBOL_TRADE_CALC_MODE as MetaTrader names it, lower-case without its prefix (forex,
+            futures, cfd, cfdindex, cfdleverage, forex_no_leverage, exch_stocks, exch_futures, exch_options,
+            exch_options_margin, exch_bonds, exch_stocks_moex, exch_bonds_moex, serv_collateral); a number
+            without a name is given as its digits
     SymbolPage:
       type: object
       required:
       - items
       - next_cursor
       properties:
+        source:
+          type: string
+          enum:
+          - live
+          - last_known
+          description: 'live: a terminal of yours runs on this server and account type. last_known: none
+            does any more; the rows are the last your terminals reported, each with its refreshed_at'
         next_cursor:
           type:
           - string
@@ -4855,6 +6717,70 @@ components:
           type: string
         timeframe:
           type: string
+    ExpertAdvisorParametersPut:
+      type: object
+      description: A parameter set for the terminal's EA. Your keys go in `params`; the platform writes
+        them, with `enabled` and the version it assigns, to the EA's parameter file (`MQL5/Files/mfx/params.json`),
+        so they never collide with the platform's own keys.
+      additionalProperties: false
+      required:
+      - enabled
+      - params
+      properties:
+        enabled:
+          type: boolean
+          description: 'False asks your EA to stop trading (a soft pause): it is honoured by the EA, and
+            the hard stop stays the platform''s'
+        params:
+          type: object
+          additionalProperties: true
+          description: Your EA's settings, any JSON object. With the platform's keys the file is at most
+            256 KiB and 32 levels deep; no key anywhere may be named like a credential (password, secret,
+            token, api key, private key, login)
+    ExpertAdvisorParameters:
+      type: object
+      description: The newest parameter set for a terminal, and how far its EA has taken it up
+      required:
+      - terminal_id
+      - version
+      - enabled
+      - params
+      - accepted_at
+      - applied_version
+      - applied_seen_at
+      - converged
+      properties:
+        terminal_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+          description: Assigned by the platform; one more than the set before
+        enabled:
+          type: boolean
+        params:
+          type: object
+          additionalProperties: true
+        accepted_at:
+          type: string
+          format: date-time
+        applied_version:
+          type:
+          - integer
+          - 'null'
+          description: The version your EA last said it runs, from its heartbeat line as the terminal
+            reported it; null until it has said
+        applied_seen_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: When the platform first heard that applied_version
+        converged:
+          type: boolean
+          description: True when applied_version equals version. False past the grace window (60 s unless
+            an operator changed it) raises the terminal condition EaParamsNotApplied
     TenantExpertAdvisorPage:
       type: object
       required:
@@ -5215,11 +7141,47 @@ paths:
       tags:
       - terminals
       operationId: listTerminals
-      summary: List the tenant's terminals, newest first (cursor pagination)
+      summary: List the tenant's terminals, newest first (cursor pagination), filtered by label and state
+      description: Every terminal of yours, RETIRED ones included, newest first. `label` and `state` narrow
+        the list in the query, before the page is cut, so a filtered page is never short for being filtered.
       x-scope: term:read
       parameters:
       - $ref: '#/components/parameters/cursor'
       - $ref: '#/components/parameters/limit'
+      - name: label
+        in: query
+        required: false
+        description: 'key:value, the label''s exact key and value, case-sensitive. Repeat it to need several:
+          a terminal is listed only when it carries every one. A value without a colon is 400 validation_error'
+        schema:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+          maxItems: 10
+        style: form
+        explode: true
+      - name: state
+        in: query
+        required: false
+        description: one state, or several comma-separated
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - REQUESTED
+            - PROVISIONING
+            - LOGGING_IN
+            - ACTIVE
+            - OFFLINE
+            - PARKED
+            - DRAINING
+            - DRAINED
+            - RETIRED
+            - FAILED
+        style: form
+        explode: false
       responses:
         '200':
           description: a page of terminals
@@ -5291,6 +7253,15 @@ paths:
       - terminals
       operationId: retireTerminal
       summary: Retire a terminal — it drains, then retires; answered with its state now
+      description: 'A terminal that is ACTIVE, OFFLINE, PARKED or still PROVISIONING (waiting for its
+        login, for example for a credential) drains: its cell stops it and deletes its folder, and it
+        is RETIRED when the cell confirms, or by the platform''s deadline when the cell never held it.
+        One that is REQUESTED, FAILED or DRAINED is RETIRED at once. One that is LOGGING_IN drains as
+        PROVISIONING does: its cell stops the login and deletes its folder. A login ends by itself within
+        15 minutes: FAILED when it has not completed, at once when the broker refuses it. A FAILED terminal
+        is tried again after `terminals.login_cooloff_minutes` (30), at most `terminals.login_cycles_per_day`
+        (3) times a day, never after a refusal; retire the FAILED terminals you no longer need. MFX retires
+        none of yours by itself. One already DRAINING or RETIRED is answered as it is.'
       x-scope: term:write
       parameters:
       - $ref: '#/components/parameters/idempotencyKey'
@@ -5301,6 +7272,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TenantTerminal'
+        default:
+          $ref: '#/components/responses/Error'
+  /terminals/{id}/journal:
+    parameters:
+    - $ref: '#/components/parameters/terminalId'
+    get:
+      tags:
+      - terminals
+      operationId: getTerminalJournal
+      summary: The terminal's MetaTrader journal, newest first - read live while it runs, its last lines
+        for 24 hours after it stops
+      description: 'While the terminal runs, the lines are read from its cell on request (`from: live`,
+        within 10 s, as a quote is). When it has stopped, failed or been retired, the answer is the last
+        lines its cell kept at the stop (`from: last_words`), kept 24 hours. Account numbers are masked
+        (`****` and the last four digits, yours included) and the cell''s file paths are removed; MetaTrader
+        writes no password to its journal. Expert advisor logs are not included. Every read is audited.
+        Another tenant''s terminal is 404.'
+      x-scope: term:read
+      parameters:
+      - name: lines
+        in: query
+        required: false
+        description: How many lines, newest first; 1 to 200, default 100
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+      responses:
+        '200':
+          description: the lines
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TerminalJournal'
+        '409':
+          description: state_error - the terminal is not running and no last lines are held (details.reason
+            not_running), for example before its first launch or more than 24 hours after it stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: upstream_error - the cell did not answer within 10 s (details.reason terminal_timeout),
+            or could not read the journal (journal_unreadable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         default:
           $ref: '#/components/responses/Error'
   /terminals/{id}/instruments:
@@ -5396,6 +7416,42 @@ paths:
       responses:
         '202':
           description: accepted; the terminal is DRAINING, and DRAINED once its cell has stopped it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantTerminal'
+        default:
+          $ref: '#/components/responses/Error'
+  /terminals/{id}/ha:
+    parameters:
+    - $ref: '#/components/parameters/terminalId'
+    post:
+      tags:
+      - terminals
+      operationId: setTerminalHa
+      summary: Turn MFX Hub HA on or off for a terminal, or change its mode
+      description: 'On, MFX Hub creates a second terminal on the same broker login, on separate hardware
+        in the terminal''s farm, and keeps it ready (`ha.fallback_state`); the terminal''s id answers
+        as before. Off, the second terminal is retired. Sent again, the same ask changes nothing. Refused:
+        a plan that does not include HA (403 `forbidden`, `details.reason` `ha_not_in_plan`); a terminal
+        that is not REQUESTED, PROVISIONING, LOGGING_IN, ACTIVE or OFFLINE (409 `state_error`); a terminal
+        carrying an expert advisor, or on a farm that runs customer code (409 `conflict`, `details.reason`
+        `ea_attached` or `customer_code_farm`); a login whose broker is not known to allow one more session
+        (409 `placement_error`, `details.reason` `login_session_limit`); warm mode, not offered yet (422
+        `unprocessable`). While HA is on, attaching an expert advisor is 409 `conflict` with `details.reason`
+        `ha_on`.'
+      x-scope: term:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TerminalHa'
+      responses:
+        '200':
+          description: the terminal as it now is, with `ha`
           content:
             application/json:
               schema:
@@ -5578,6 +7634,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExpertAdvisorAttachment'
+        default:
+          $ref: '#/components/responses/Error'
+  /terminals/{id}/expert-advisor/parameters:
+    parameters:
+    - $ref: '#/components/parameters/terminalId'
+    put:
+      tags:
+      - expert advisors
+      operationId: putExpertAdvisorParameters
+      summary: Send your EA a new parameter set - the platform numbers it, delivers it to the terminal,
+        and keeps it for every later copy of the terminal
+      description: 'The set replaces the one before. The platform gives it the next `version` (1 for the
+        first), answers at once, and delivers it to the terminal''s EA, which reads it from its parameter
+        file. You never send a version: ordering is the platform''s, so a retry or a race can never put
+        an older set back. The newest set is also part of the terminal''s desired state, so a terminal
+        copied again (detach and attach, or a move to another cell) starts with it, not with the EA''s
+        defaults. `applied_version` on getExpertAdvisorParameters says when your EA runs it: your EA echoes
+        the version it runs in every heartbeat line. Refused: 409 `no_ea_attached` when the terminal carries
+        no expert; 400 `validation_error` when the set is not an object, when the file it makes would
+        exceed 256 KiB (`details.bytes`, `details.max`), or when a key anywhere in it is named like a
+        credential (`details.key`) - your EA can read this file, so it must never hold one; 404 for another
+        tenant''s terminal. The same Idempotency-Key with the same body answers the same version again;
+        with another body it is 409 `conflict` with `details.reason = idempotency_key_reused`. What the
+        cell answered is kept on the platform: read the outcome on getExpertAdvisorParameters (`version`,
+        `applied_version`, `converged`); getCommand shows only the command''s own state.'
+      x-scope: ea:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpertAdvisorParametersPut'
+      responses:
+        '202':
+          description: accepted, numbered and on its way to the terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertAdvisorParameters'
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      tags:
+      - expert advisors
+      operationId: getExpertAdvisorParameters
+      summary: The newest parameter set and the version your EA reports it runs
+      description: 404 when no set was ever sent for the terminal, or for another tenant's terminal.
+      x-scope: ea:read
+      responses:
+        '200':
+          description: the newest set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertAdvisorParameters'
         default:
           $ref: '#/components/responses/Error'
   /terminals/{id}/operations/{operation_id}:
@@ -5908,8 +8021,9 @@ paths:
       operationId: getCommand
       summary: Command state + result — mt5_retcode, retcode_text, reason (granular), comment_raw, tickets,
         exec_price, exec_volume, broker_latency_ms, agent_latency_ms, terminal_state
-      description: UNKNOWN is visible and not final; it resolves to SUCCEEDED or FAILED by reconciliation.
-        Another tenant's command is 404.
+      description: UNKNOWN is visible and not final; the platform asks the terminal again until `resolve_by`
+        and resolves it to SUCCEEDED, FAILED or REJECTED (command.unknown, then command.resolved). Another
+        tenant's command is 404.
       x-scope: exec:read
       responses:
         '200':
@@ -5981,12 +8095,14 @@ paths:
     - name: from
       in: query
       required: true
+      description: A UTC instant; the broker's own clock is applied on the way to MT5
       schema:
         type: string
         format: date-time
     - name: to
       in: query
       required: true
+      description: A UTC instant, as from
       schema:
         type: string
         format: date-time
@@ -6011,7 +8127,11 @@ paths:
         31 days; `next_cursor` continues the window before the oldest deal returned. With `position`,
         only that position''s deals are returned: the window is still read from the broker and the other
         deals are left out, so a page can hold fewer than `limit`, and even none, while `next_cursor`
-        is not null. Keep asking until it is null.'
+        is not null. Keep asking until it is null. Every time is UTC: MT5 stamps deals on the broker server''s
+        own clock (UTC+2 or UTC+3 on many servers, moving with daylight saving), and the platform converts
+        each deal, and the window, with that server''s measured clock. When no clock has been measured
+        for the server yet the read is refused rather than guessed (503 `broker_clock_unknown`); it answers
+        once a terminal on the server has received a price.'
       x-scope: acct:read
       responses:
         '200':
@@ -6027,7 +8147,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: upstream_error - terminal_timeout (no answer within 10 s) or deals_unreadable
+          description: 'upstream_error - terminal_timeout (no answer within 10 s), deals_unreadable, or
+            broker_clock_unknown (no clock measured for the server yet: retry once a terminal on it has
+            a price)'
           content:
             application/json:
               schema:
@@ -6106,6 +8228,28 @@ paths:
                 $ref: '#/components/schemas/TenantBrokerServerPage'
         default:
           $ref: '#/components/responses/Error'
+  /brokers/{id}/catalogues:
+    parameters:
+    - $ref: '#/components/parameters/pathId'
+    get:
+      tags:
+      - md
+      operationId: listCatalogues
+      summary: One row per server and account type you hold a catalogue for, with a hash of the whole
+        list - compare it to re-read only what changed
+      description: '`catalogue_hash` changes when any symbol is added, removed or comes back, or any symbol''s
+        spec_hash, description or identity fields change; never on a quote figure. A tenant that holds
+        no catalogue for this broker gets an empty list.'
+      x-scope: md:read
+      responses:
+        '200':
+          description: the catalogues
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerCatalogueList'
+        default:
+          $ref: '#/components/responses/Error'
   /brokers/{id}/symbols:
     parameters:
     - name: id
@@ -6148,9 +8292,12 @@ paths:
       operationId: listSymbols
       summary: The tenant's symbol catalogue for one server and account type — spec, trade_mode (quotable
         ≠ tradeable), pip_value_per_lot, spec_hash, trade sessions and derived status
-      description: Read from the tenant's own terminals on that server. MFX holds no broker accounts and
-        never shares one tenant's catalogue with another. A server where the tenant runs no terminal answers
-        409 (`state_error`, details.reason `no_terminal_on_server`), never an empty list.
+      description: 'Read from the tenant''s own terminals on that server. MFX holds no broker accounts
+        and never shares one tenant''s catalogue with another. A server and account type where your terminals
+        reported a catalogue and none runs any more is answered from the last report, with `source: last_known`
+        and each row''s `refreshed_at`. A server you have never run a terminal on answers 409 (`state_error`,
+        details.reason `no_terminal_on_server`), never an empty list: start a Read only terminal there
+        with your own login.'
       x-scope: md:read
       responses:
         '200':
@@ -6414,18 +8561,37 @@ paths:
       tags:
       - md
       operationId: getCandles
-      summary: Historical candles by bar time, read through one of your own terminals on the server; at
-        most 1000 bars per call, the newest of the window
+      summary: Historical candles by bar time, from the platform's store when it holds the window complete,
+        else read through one of your own terminals on the server; at most 1000 bars per call, the newest
+        of the window
       x-scope: md:read
       responses:
         '200':
-          description: candles, oldest first
+          description: candles, oldest first; Retry-After when the store is still repairing the window
+            (complete_to says how far it is whole)
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds; only while the store repairs a gap in the window
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CandleList'
+        '429':
+          description: reads_busy — your reads through terminals on this server are at their limit in
+            flight (md.candle_reads_in_flight); ask again after Retry-After
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '503':
-          description: upstream_error — terminal_timeout (no answer within 10 s) or the cell's word
+          description: upstream_error — terminal_timeout (no answer within 10 s), broker_clock_unknown
+            (no clock measured for the server yet), or the cell's word
           content:
             application/json:
               schema:
@@ -6484,7 +8650,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/TickList'
         '503':
-          description: upstream_error — terminal_timeout (no answer within 10 s) or the cell's word
+          description: upstream_error — terminal_timeout (no answer within 10 s), broker_clock_unknown
+            (no clock measured for the server yet), or the cell's word
           content:
             application/json:
               schema:
@@ -6537,11 +8704,31 @@ paths:
       tags:
       - usage
       operationId: getUsage
-      summary: Quota consumption and remaining budget per metric (commands/s, md msgs/s, ws conns)
-      x-scope: billing:read
+      summary: The calling key's and its tenant's limits, where each comes from, and how much is in use
+      description: |
+        Every limit that applies to the calling key and its tenant, so an integration paces itself
+        below them. Per-key figures come from the tenant's plan unless the tenant or the key has
+        its own (the key's beats the tenant's, which beats the plan's), and say whether they are
+        applied yet (`enforced`).
+
+        Defaults per plan, per API key:
+
+        | Limit | Standard | Enterprise | System |
+        |---|---|---|---|
+        | Commands per second, steady | 5 | 20 | 50 |
+        | Commands, burst | 10 | 50 | 100 |
+        | Market-data messages per second | 200 | 2,000 | 5,000 |
+        | Stream connections | 3 | 10 | 20 |
+        | Account channels per connection | 50 | 500 | 1,000 |
+        | Terminals per tenant | 20 | 200 | 500 |
+        | Terminals per broker login | the broker's own limit | the broker's own limit | the broker's own limit |
+
+        The terminals-per-tenant figures apply together with per-key enforcement; until then the
+        tenant's terminal limit is the one `tenant.terminals` serves.
+      x-scope: acct:read
       responses:
         '200':
-          description: Consumption per metric, the calling key's limits, and the budget left
+          description: The limits, their sources and their use
           headers:
             X-MFX-Budget-Remaining:
               $ref: '#/components/headers/BudgetRemaining'
@@ -6748,12 +8935,16 @@ paths:
         in: query
         description: one state, or several comma-separated. completed lists the last 30 days
         schema:
-          type: string
-          enum:
-          - scheduled
-          - in_progress
-          - completed
-          - cancelled
+          type: array
+          items:
+            type: string
+            enum:
+            - scheduled
+            - in_progress
+            - completed
+            - cancelled
+        style: form
+        explode: false
       responses:
         '200':
           description: a page of windows
@@ -6801,9 +8992,9 @@ paths:
         the terminal''s own `account:{terminal_id}` channel, not on `events`: `account.snapshot` on every
         subscribe and resume (a snapshot, never a replay), when the position set changes and every 60
         s, and `account.marks` in between. Account messages are samples: a slow client loses them before
-        any event, and a `seq` gap means resume. `position.*` and `account.profile_changed` stay on `events`;
-        fills stay on `results:{terminal_id}`. Market depth travels on `book:{server_id}:{symbol}` as
-        `md.book`: the newest book on subscribe, then each change. While a planned maintenance window
+        any event, and a `seq` gap means resume. `position.*`, `order.*` and `account.profile_changed`
+        stay on `events`; fills stay on `results:{terminal_id}`. Market depth travels on `book:{server_id}:{symbol}`
+        as `md.book`: the newest book on subscribe, then each change. While a planned maintenance window
         suspends the tenant''s market data, its `md:`, `candles:` and `book:` channels carry an `md.status`
         of `maintenance` and no data, then `live` when it ends (`MdStatusMessage`). The upgrade request
         is signed as any call is (`mfxSignature`, Ed25519): over `GET`, the path with its query and an
@@ -6815,16 +9006,24 @@ paths:
         '4001': re-authenticate (credentials expired, rotated or revoked)
         '4008': slow consumer — the client fell too far behind and was dropped
         '4009': lifetime reached (24 h); reconnect and resume
+        '4029': too many connections for the tenant or for this key's cap (ws_conns, details.scope); an
+          error op with rate_limited came first. Close one, then reconnect after details.retry_after_s
       x-events:
       - terminal.state_changed
       - terminal.condition_changed
       - terminal.operation_changed
+      - terminal.ha_switched
       - command.completed
       - command.failed
+      - command.unknown
+      - command.resolved
       - position.opened
       - position.modified
       - position.closed
       - position.trailing_stop_changed
+      - order.placed
+      - order.modified
+      - order.closed
       - account.snapshot
       - account.marks
       - account.profile_changed
@@ -6833,6 +9032,7 @@ paths:
       - md.status
       - md.subscription_degraded
       - md.subscription_recovered
+      - maintenance.window_changed
       - webhook.endpoint_paused
       - webhook.endpoint_resumed
       - webhook.test
@@ -6848,16 +9048,24 @@ paths:
       - platform.update_pending
       - replica.failover
       x-event-payloads:
+        md.candle_closed:
+          $ref: '#/components/schemas/MdCandleClosed'
         terminal.state_changed:
           $ref: '#/components/schemas/TerminalStateChanged'
         terminal.condition_changed:
           $ref: '#/components/schemas/TerminalConditionChanged'
         terminal.operation_changed:
           $ref: '#/components/schemas/TerminalOperationChanged'
+        terminal.ha_switched:
+          $ref: '#/components/schemas/TerminalHaSwitched'
         command.completed:
           $ref: '#/components/schemas/CommandOutcome'
         command.failed:
           $ref: '#/components/schemas/CommandOutcome'
+        command.unknown:
+          $ref: '#/components/schemas/CommandUnknown'
+        command.resolved:
+          $ref: '#/components/schemas/CommandResolved'
         position.opened:
           $ref: '#/components/schemas/PositionOpened'
         position.modified:
@@ -6866,6 +9074,12 @@ paths:
           $ref: '#/components/schemas/PositionClosed'
         position.trailing_stop_changed:
           $ref: '#/components/schemas/PositionTrailingStopChanged'
+        order.placed:
+          $ref: '#/components/schemas/OrderPlaced'
+        order.modified:
+          $ref: '#/components/schemas/OrderModified'
+        order.closed:
+          $ref: '#/components/schemas/OrderClosed'
         account.snapshot:
           $ref: '#/components/schemas/AccountSnapshotMessage'
         account.marks:
@@ -6896,11 +9110,15 @@ paths:
           $ref: '#/components/schemas/EaTelemetryLostMessage'
         symbol.spec_changed:
           $ref: '#/components/schemas/SymbolSpecChanged'
+        maintenance.window_changed:
+          $ref: '#/components/schemas/MaintenanceWindowChanged'
       responses:
         '101':
           description: switching protocols
         '429':
-          description: over WS connection quota
+          description: 'Over the tenant''s connection ceiling or the key''s cap (`ws_conns`, `details.scope`).
+            Not sent as an HTTP status: the upgrade succeeds, one `error` op with `rate_limited` follows,
+            and the connection closes with 4029.'
           headers:
             Retry-After:
               $ref: '#/components/headers/RetryAfter'
@@ -7072,11 +9290,15 @@ paths:
         in: query
         description: one value, or several comma-separated
         schema:
-          type: string
-          enum:
-          - retrying
-          - delivered
-          - dead
+          type: array
+          items:
+            type: string
+            enum:
+            - retrying
+            - delivered
+            - dead
+        style: form
+        explode: false
       - $ref: '#/components/parameters/cursor'
       - $ref: '#/components/parameters/limit'
       responses:

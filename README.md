@@ -105,3 +105,11 @@ must fail until it is removed. To move to a new suite release:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) to propose a change, and [SECURITY.md](SECURITY.md) to report a
 security problem.
+
+## Licence and trademarks
+
+Licensed under the [Apache License 2.0](LICENSE).
+
+MFX Hub is an independent service and is not affiliated with, endorsed by or sponsored by
+MetaQuotes Ltd. MetaTrader is a registered trademark of MetaQuotes Ltd., used here only to say which
+trading platform MFX Hub's terminals are compatible with.

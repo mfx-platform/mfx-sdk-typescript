@@ -15,6 +15,11 @@ updates:
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # TypeScript's majors are taken on purpose, once the tools that build the SDK accept them:
+      # typescript-eslint 8 accepts up to 6.0 and openapi-typescript 7 only 5.x, so a proposed
+      # major fails as "Error while updating peer dependency" instead of becoming a pull request.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -13,6 +13,7 @@ import {
   retryAfterSeconds,
 } from "./errors.js";
 import { RequestSigner, type SigningKey } from "./signing.js";
+import { Accounts } from "./accounts.js";
 import { Catalog } from "./catalog.js";
 import { Execution } from "./execution.js";
 import { MfxStream, type StreamOptions } from "./stream.js";
@@ -62,7 +63,10 @@ export interface RequestSpec {
   readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** The path after the version, such as `/terminals/{id}`, with ids already filled in. */
   readonly path: string;
-  readonly query?: Readonly<Record<string, string | number | boolean | null | undefined>>;
+  /** A list value is sent as a repeated parameter (`label=a:b&label=c:d`). */
+  readonly query?: Readonly<
+    Record<string, string | number | boolean | readonly string[] | null | undefined>
+  >;
   readonly body?: unknown;
   /** Required on every write; sent as the Idempotency-Key header. */
   readonly idempotencyKey?: string;
@@ -97,6 +101,8 @@ export class MfxClient {
   readonly execution: Execution;
   /** Brokers, symbols and quotes. */
   readonly catalog: Catalog;
+  /** The trading account behind a terminal: figures, positions, pending orders and deals. */
+  readonly accounts: Accounts;
 
   /**
    * @param baseUrl the API's base, including the version: `https://api.mfxhub.com/v1`, or
@@ -120,6 +126,7 @@ export class MfxClient {
     this.terminals = new Terminals(this);
     this.execution = new Execution(this);
     this.catalog = new Catalog(this);
+    this.accounts = new Accounts(this);
   }
 
   /** The id of the key this client signs with. Safe to log, unlike the private key. */
@@ -189,7 +196,12 @@ export class MfxClient {
   async send(spec: RequestSpec): Promise<Answer> {
     const url = new URL(spec.path.replace(/^\//, ""), this.#base);
     for (const [name, value] of Object.entries(spec.query ?? {})) {
-      if (value !== null && value !== undefined) url.searchParams.set(name, String(value));
+      if (value === null || value === undefined) continue;
+      if (typeof value === "object") {
+        for (const each of value) url.searchParams.append(name, each);
+      } else {
+        url.searchParams.set(name, String(value));
+      }
     }
     const body =
       spec.body === undefined ? new Uint8Array() : Buffer.from(JSON.stringify(spec.body));

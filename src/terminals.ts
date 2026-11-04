@@ -11,7 +11,7 @@
 
 import { idempotencyKey, limit as pageLimit, uuid } from "./arguments.js";
 import type { MfxClient } from "./client.js";
-import type { components } from "./generated/api.js";
+import type { components, operations } from "./generated/api.js";
 import { everyItem, pageOf, type Page } from "./pages.js";
 
 /** A terminal, as the API describes it. */
@@ -20,6 +20,30 @@ export type Terminal = components["schemas"]["TenantTerminal"];
 export type TerminalState = Terminal["state"];
 /** How a terminal is replicated. */
 export type Redundancy = components["schemas"]["TerminalCreate"]["redundancy"];
+
+/** The states the list can be narrowed to, as the contract declares them. */
+type ListState = NonNullable<
+  NonNullable<operations["listTerminals"]["parameters"]["query"]>["state"]
+>;
+
+/** A terminal's journal: its lines newest first, and whether they were read live. */
+export type TerminalJournal = components["schemas"]["TerminalJournal"];
+/** One line of a terminal's MetaTrader journal. */
+export type JournalLine = components["schemas"]["JournalLine"];
+
+/** What {@link Terminals.journal} takes. */
+export interface JournalOptions {
+  /** How many lines, newest first: 1 to 200. The platform's default is 100. */
+  readonly lines?: number;
+}
+
+/** Narrow a terminal list in the query, before the page is cut. */
+export interface TerminalFilter {
+  /** Only terminals carrying every one of these labels, by exact key and value. At most 10. */
+  readonly labels?: Readonly<Record<string, string>>;
+  /** Only terminals in one of these states. */
+  readonly state?: ListState | ListState[number];
+}
 
 /** What {@link Terminals.create} takes. */
 export interface CreateTerminal {
@@ -40,11 +64,34 @@ export interface CreateTerminal {
 }
 
 /** What {@link Terminals.page} takes. */
-export interface PageOptions {
+export interface PageOptions extends TerminalFilter {
   /** The `nextCursor` of the page before; leave it out for the first page. */
   readonly cursor?: string;
   /** How many to a page, 1 to 200. */
   readonly limit?: number;
+}
+
+function labelQuery(labels: TerminalFilter["labels"]): string[] | undefined {
+  if (labels === undefined) return undefined;
+  const pairs = Object.entries(labels);
+  if (pairs.length > 10) throw new RangeError("labels is at most 10 pairs");
+  return pairs.map(([key, value]) => {
+    if (key === "" || key.includes(":")) {
+      throw new RangeError(`a label key is not empty and has no colon: ${JSON.stringify(key)}`);
+    }
+    if (typeof value !== "string") throw new TypeError(`label ${key} is a string`);
+    if (key.length + 1 + value.length > 200) {
+      throw new RangeError(`label ${key} is over 200 characters`);
+    }
+    return `${key}:${value}`;
+  });
+}
+
+function stateQuery(state: TerminalFilter["state"]): string | undefined {
+  if (state === undefined) return undefined;
+  const states: readonly string[] = typeof state === "string" ? [state] : state;
+  if (states.length === 0) throw new RangeError("state is one or more states; got none");
+  return states.join(",");
 }
 
 /**
@@ -79,20 +126,51 @@ export class Terminals {
     const body = await this.#client.read({
       method: "GET",
       path: "/terminals",
-      query: { cursor: options.cursor, limit },
+      query: {
+        cursor: options.cursor,
+        limit,
+        label: labelQuery(options.labels),
+        state: stateQuery(options.state),
+      },
     });
     return pageOf<Terminal>(body);
   }
 
-  /** Every terminal, following the cursor, one request a page. There is no total. */
-  list(options: Pick<PageOptions, "limit"> = {}): AsyncGenerator<Terminal, void, undefined> {
+  /**
+   * Every terminal, following the cursor, one request a page. There is no total. `labels` and
+   * `state` narrow the list on the platform, so a filtered page is never short for being filtered.
+   */
+  list(options: Omit<PageOptions, "cursor"> = {}): AsyncGenerator<Terminal, void, undefined> {
     const limit = pageLimit(options.limit);
+    const rest: Omit<PageOptions, "cursor"> = {
+      ...(limit === undefined ? {} : { limit }),
+      ...(options.labels === undefined ? {} : { labels: options.labels }),
+      ...(options.state === undefined ? {} : { state: options.state }),
+    };
     return everyItem((cursor) =>
-      this.page({
-        ...(cursor === undefined ? {} : { cursor }),
-        ...(limit === undefined ? {} : { limit }),
-      }),
+      this.page({ ...rest, ...(cursor === undefined ? {} : { cursor }) }),
     );
+  }
+
+  /**
+   * The terminal's MetaTrader journal, newest first. While it runs the lines are read from its
+   * cell (`from: "live"`); after it stops they are the last lines its cell kept, for 24 hours
+   * (`from: "last_words"`). Account numbers are masked. A terminal with no lines held is 409.
+   */
+  async journal(terminalId: string, options: JournalOptions = {}): Promise<TerminalJournal> {
+    const id = uuid("terminalId", terminalId);
+    const lines = options.lines;
+    if (lines !== undefined && (typeof lines !== "number" || !Number.isInteger(lines))) {
+      throw new TypeError("lines is a whole number");
+    }
+    if (lines !== undefined && (lines < 1 || lines > 200)) {
+      throw new RangeError(`lines is 1 to 200; got ${lines}`);
+    }
+    return (await this.#client.read({
+      method: "GET",
+      path: `/terminals/${id}/journal`,
+      query: { lines },
+    })) as TerminalJournal;
   }
 
   /**

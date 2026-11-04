@@ -11,7 +11,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the tenant's terminals, newest first (cursor pagination) */
+    /**
+     * List the tenant's terminals, newest first (cursor pagination), filtered by label and state
+     * @description Every terminal of yours, RETIRED ones included, newest first. `label` and `state` narrow the list in the query, before the page is cut, so a filtered page is never short for being filtered.
+     */
     get: operations["listTerminals"];
     put?: never;
     /**
@@ -38,7 +41,10 @@ export interface paths {
     get: operations["getTerminal"];
     put?: never;
     post?: never;
-    /** Retire a terminal — it drains, then retires; answered with its state now */
+    /**
+     * Retire a terminal — it drains, then retires; answered with its state now
+     * @description A terminal that is ACTIVE, OFFLINE, PARKED or still PROVISIONING (waiting for its login, for example for a credential) drains: its cell stops it and deletes its folder, and it is RETIRED when the cell confirms, or by the platform's deadline when the cell never held it. One that is REQUESTED, FAILED or DRAINED is RETIRED at once. One that is LOGGING_IN drains as PROVISIONING does: its cell stops the login and deletes its folder. A login ends by itself within 15 minutes: FAILED when it has not completed, at once when the broker refuses it. A FAILED terminal is tried again after `terminals.login_cooloff_minutes` (30), at most `terminals.login_cycles_per_day` (3) times a day, never after a refusal; retire the FAILED terminals you no longer need. MFX retires none of yours by itself. One already DRAINING or RETIRED is answered as it is.
+     */
     delete: operations["retireTerminal"];
     options?: never;
     head?: never;
@@ -47,6 +53,28 @@ export interface paths {
      * @description Written at once and applied by the terminal's cell within a minute, without a restart. A rate faster than the farm's is 422 with `details.allowed`. A faster rate that the terminal's cell no longer has room for is 409 `no_room` with `details.fastest_that_fits`: the terminal is never moved to make room. Another tenant's terminal is 404.
      */
     patch: operations["updateTerminal"];
+    trace?: never;
+  };
+  "/terminals/{id}/journal": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * The terminal's MetaTrader journal, newest first - read live while it runs, its last lines for 24 hours after it stops
+     * @description While the terminal runs, the lines are read from its cell on request (`from: live`, within 10 s, as a quote is). When it has stopped, failed or been retired, the answer is the last lines its cell kept at the stop (`from: last_words`), kept 24 hours. Account numbers are masked (`****` and the last four digits, yours included) and the cell's file paths are removed; MetaTrader writes no password to its journal. Expert advisor logs are not included. Every read is audited. Another tenant's terminal is 404.
+     */
+    get: operations["getTerminalJournal"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/terminals/{id}/instruments": {
@@ -87,6 +115,28 @@ export interface paths {
      * @description Close the terminal gracefully and keep it. A drain is a governed operation under the rules of restartTerminal: one lifecycle operation per terminal at a time (409 `operation_in_progress`), a cooldown per terminal (429 `cooldown`), open positions need `confirm_open_positions` (409 `positions_open`) while the platform's open-position confirmation setting is on, the tenant rate and concurrency, counted with moves and retires (429 `tenant_rate`, `concurrency`), and the farm blast radius (429 `farm_capacity`). A refusal names its rule in `error.code` and carries `Retry-After` when waiting helps. A drain is never queued. Offered for an ACTIVE or OFFLINE terminal; any other state is 409 `state_error`. The answer is the terminal DRAINING. Its cell stops it as it stops a retired terminal; it is then DRAINED (`terminal.state_changed`) and the operation, kind `drain`, succeeds (`terminal.operation_changed`). A DRAINED terminal keeps its id, broker account and credential, instruments, depth instruments, labels, refresh rate and expert-advisor attachment record; it runs nothing (no MT5 session, no expert advisor), holds no cell slot, and is not billed from the moment it is DRAINED. It still counts toward the terminal quota (terminals that are not RETIRED) and toward its login's terminal and session limits, because it keeps its account and logs in again when resumed. Resume it with POST /terminals/{id}/resume; retire it with DELETE /terminals/{id}, at once since it holds nothing. A DELETE while it is DRAINING makes the drain end in RETIRED instead. The same Idempotency-Key answers the terminal as it now is; a different body under it is 409 `conflict`.
      */
     post: operations["drainTerminal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/terminals/{id}/ha": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Turn MFX Hub HA on or off for a terminal, or change its mode
+     * @description On, MFX Hub creates a second terminal on the same broker login, on separate hardware in the terminal's farm, and keeps it ready (`ha.fallback_state`); the terminal's id answers as before. Off, the second terminal is retired. Sent again, the same ask changes nothing. Refused: a plan that does not include HA (403 `forbidden`, `details.reason` `ha_not_in_plan`); a terminal that is not REQUESTED, PROVISIONING, LOGGING_IN, ACTIVE or OFFLINE (409 `state_error`); a terminal carrying an expert advisor, or on a farm that runs customer code (409 `conflict`, `details.reason` `ea_attached` or `customer_code_farm`); a login whose broker is not known to allow one more session (409 `placement_error`, `details.reason` `login_session_limit`); warm mode, not offered yet (422 `unprocessable`). While HA is on, attaching an expert advisor is 409 `conflict` with `details.reason` `ha_on`.
+     */
+    post: operations["setTerminalHa"];
     delete?: never;
     options?: never;
     head?: never;
@@ -179,6 +229,32 @@ export interface paths {
      * @description 409 `not_awaiting_confirmation` unless the terminal's attachment is waiting for it. A code that is wrong, used or expired is 403 `confirmation_refused`, and the answer does not say which. Five refusals in a row lock the confirmation for that attachment until an operator looks. A key alone confirms nothing: the code reaches only the representative's mailbox.
      */
     post: operations["confirmExpertAdvisor"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/terminals/{id}/expert-advisor/parameters": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * The newest parameter set and the version your EA reports it runs
+     * @description 404 when no set was ever sent for the terminal, or for another tenant's terminal.
+     */
+    get: operations["getExpertAdvisorParameters"];
+    /**
+     * Send your EA a new parameter set - the platform numbers it, delivers it to the terminal, and keeps it for every later copy of the terminal
+     * @description The set replaces the one before. The platform gives it the next `version` (1 for the first), answers at once, and delivers it to the terminal's EA, which reads it from its parameter file. You never send a version: ordering is the platform's, so a retry or a race can never put an older set back. The newest set is also part of the terminal's desired state, so a terminal copied again (detach and attach, or a move to another cell) starts with it, not with the EA's defaults. `applied_version` on getExpertAdvisorParameters says when your EA runs it: your EA echoes the version it runs in every heartbeat line. Refused: 409 `no_ea_attached` when the terminal carries no expert; 400 `validation_error` when the set is not an object, when the file it makes would exceed 256 KiB (`details.bytes`, `details.max`), or when a key anywhere in it is named like a credential (`details.key`) - your EA can read this file, so it must never hold one; 404 for another tenant's terminal. The same Idempotency-Key with the same body answers the same version again; with another body it is 409 `conflict` with `details.reason = idempotency_key_reused`. What the cell answered is kept on the platform: read the outcome on getExpertAdvisorParameters (`version`, `applied_version`, `converged`); getCommand shows only the command's own state.
+     */
+    put: operations["putExpertAdvisorParameters"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -405,7 +481,7 @@ export interface paths {
     };
     /**
      * Command state + result — mt5_retcode, retcode_text, reason (granular), comment_raw, tickets, exec_price, exec_volume, broker_latency_ms, agent_latency_ms, terminal_state
-     * @description UNKNOWN is visible and not final; it resolves to SUCCEEDED or FAILED by reconciliation. Another tenant's command is 404.
+     * @description UNKNOWN is visible and not final; the platform asks the terminal again until `resolve_by` and resolves it to SUCCEEDED, FAILED or REJECTED (command.unknown, then command.resolved). Another tenant's command is 404.
      */
     get: operations["getCommand"];
     put?: never;
@@ -476,7 +552,9 @@ export interface paths {
   "/terminals/{id}/history/deals": {
     parameters: {
       query: {
+        /** @description A UTC instant; the broker's own clock is applied on the way to MT5 */
         from: string;
+        /** @description A UTC instant, as from */
         to: string;
         /** @description Only the deals of this position (Deal.position): its opening deal, any partial closes and its closing deal, inside from/to. A position open longer than 31 days is read window by window */
         position?: number;
@@ -491,7 +569,7 @@ export interface paths {
     };
     /**
      * Deals in a window, newest first by (time, deal), optionally of one position
-     * @description Read from the broker on demand with a read-only request through the terminal, bounded at 10 s. Nothing is stored: the broker is the book of record for history. `to - from` is at most 31 days; `next_cursor` continues the window before the oldest deal returned. With `position`, only that position's deals are returned: the window is still read from the broker and the other deals are left out, so a page can hold fewer than `limit`, and even none, while `next_cursor` is not null. Keep asking until it is null.
+     * @description Read from the broker on demand with a read-only request through the terminal, bounded at 10 s. Nothing is stored: the broker is the book of record for history. `to - from` is at most 31 days; `next_cursor` continues the window before the oldest deal returned. With `position`, only that position's deals are returned: the window is still read from the broker and the other deals are left out, so a page can hold fewer than `limit`, and even none, while `next_cursor` is not null. Keep asking until it is null. Every time is UTC: MT5 stamps deals on the broker server's own clock (UTC+2 or UTC+3 on many servers, moving with daylight saving), and the platform converts each deal, and the window, with that server's measured clock. When no clock has been measured for the server yet the read is refused rather than guessed (503 `broker_clock_unknown`); it answers once a terminal on the server has received a price.
      */
     get: operations["listDeals"];
     put?: never;
@@ -560,6 +638,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/brokers/{id}/catalogues": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * One row per server and account type you hold a catalogue for, with a hash of the whole list - compare it to re-read only what changed
+     * @description `catalogue_hash` changes when any symbol is added, removed or comes back, or any symbol's spec_hash, description or identity fields change; never on a quote figure. A tenant that holds no catalogue for this broker gets an empty list.
+     */
+    get: operations["listCatalogues"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/brokers/{id}/symbols": {
     parameters: {
       query?: {
@@ -581,7 +681,7 @@ export interface paths {
     };
     /**
      * The tenant's symbol catalogue for one server and account type — spec, trade_mode (quotable ≠ tradeable), pip_value_per_lot, spec_hash, trade sessions and derived status
-     * @description Read from the tenant's own terminals on that server. MFX holds no broker accounts and never shares one tenant's catalogue with another. A server where the tenant runs no terminal answers 409 (`state_error`, details.reason `no_terminal_on_server`), never an empty list.
+     * @description Read from the tenant's own terminals on that server. MFX holds no broker accounts and never shares one tenant's catalogue with another. A server and account type where your terminals reported a catalogue and none runs any more is answered from the last report, with `source: last_known` and each row's `refreshed_at`. A server you have never run a terminal on answers 409 (`state_error`, details.reason `no_terminal_on_server`), never an empty list: start a Read only terminal there with your own login.
      */
     get: operations["listSymbols"];
     put?: never;
@@ -700,7 +800,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Historical candles by bar time, read through one of your own terminals on the server; at most 1000 bars per call, the newest of the window */
+    /** Historical candles by bar time, from the platform's store when it holds the window complete, else read through one of your own terminals on the server; at most 1000 bars per call, the newest of the window */
     get: operations["getCandles"];
     put?: never;
     post?: never;
@@ -780,7 +880,28 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Quota consumption and remaining budget per metric (commands/s, md msgs/s, ws conns) */
+    /**
+     * The calling key's and its tenant's limits, where each comes from, and how much is in use
+     * @description Every limit that applies to the calling key and its tenant, so an integration paces itself
+     *     below them. Per-key figures come from the tenant's plan unless the tenant or the key has
+     *     its own (the key's beats the tenant's, which beats the plan's), and say whether they are
+     *     applied yet (`enforced`).
+     *
+     *     Defaults per plan, per API key:
+     *
+     *     | Limit | Standard | Enterprise | System |
+     *     |---|---|---|---|
+     *     | Commands per second, steady | 5 | 20 | 50 |
+     *     | Commands, burst | 10 | 50 | 100 |
+     *     | Market-data messages per second | 200 | 2,000 | 5,000 |
+     *     | Stream connections | 3 | 10 | 20 |
+     *     | Account channels per connection | 50 | 500 | 1,000 |
+     *     | Terminals per tenant | 20 | 200 | 500 |
+     *     | Terminals per broker login | the broker's own limit | the broker's own limit | the broker's own limit |
+     *
+     *     The terminals-per-tenant figures apply together with per-key enforcement; until then the
+     *     tenant's terminal limit is the one `tenant.terminals` serves.
+     */
     get: operations["getUsage"];
     put?: never;
     post?: never;
@@ -927,7 +1048,7 @@ export interface paths {
     };
     /**
      * WebSocket upgrade (wss://ws.mfxhub.com/v1/stream; dev wss://ws.dev.mfxhub.com/v1/stream) — Ed25519 signature at upgrade (mfxSignature); channels md · candles · events · results · account · ea · book; 24 h max lifetime; drop-oldest ticks per slow client
-     * @description Control messages are JSON: `StreamClientMessage` in, `StreamServerMessage` out. Channels are keyed by id (`StreamChannel`). Results and events carry a per-channel `seq` and are replayed on `resume` for up to 15 minutes; ticks and candles are not replayed. Account state travels on the terminal's own `account:{terminal_id}` channel, not on `events`: `account.snapshot` on every subscribe and resume (a snapshot, never a replay), when the position set changes and every 60 s, and `account.marks` in between. Account messages are samples: a slow client loses them before any event, and a `seq` gap means resume. `position.*` and `account.profile_changed` stay on `events`; fills stay on `results:{terminal_id}`. Market depth travels on `book:{server_id}:{symbol}` as `md.book`: the newest book on subscribe, then each change. While a planned maintenance window suspends the tenant's market data, its `md:`, `candles:` and `book:` channels carry an `md.status` of `maintenance` and no data, then `live` when it ends (`MdStatusMessage`). The upgrade request is signed as any call is (`mfxSignature`, Ed25519): over `GET`, the path with its query and an empty body. Each event's `data` is described by the schema `x-event-payloads` names for its type; on `events` it also carries the `type`. Close codes are listed in `x-close-codes`.
+     * @description Control messages are JSON: `StreamClientMessage` in, `StreamServerMessage` out. Channels are keyed by id (`StreamChannel`). Results and events carry a per-channel `seq` and are replayed on `resume` for up to 15 minutes; ticks and candles are not replayed. Account state travels on the terminal's own `account:{terminal_id}` channel, not on `events`: `account.snapshot` on every subscribe and resume (a snapshot, never a replay), when the position set changes and every 60 s, and `account.marks` in between. Account messages are samples: a slow client loses them before any event, and a `seq` gap means resume. `position.*`, `order.*` and `account.profile_changed` stay on `events`; fills stay on `results:{terminal_id}`. Market depth travels on `book:{server_id}:{symbol}` as `md.book`: the newest book on subscribe, then each change. While a planned maintenance window suspends the tenant's market data, its `md:`, `candles:` and `book:` channels carry an `md.status` of `maintenance` and no data, then `live` when it ends (`MdStatusMessage`). The upgrade request is signed as any call is (`mfxSignature`, Ed25519): over `GET`, the path with its query and an empty body. Each event's `data` is described by the schema `x-event-payloads` names for its type; on `events` it also carries the `type`. Close codes are listed in `x-close-codes`.
      */
     get: operations["openStream"];
     put?: never;
@@ -1181,7 +1302,7 @@ export interface components {
        * @description The operation that replaced this one; set only on SUPERSEDED
        */
       superseded_by?: string | null;
-      /** @description key:<key id>, admin.<email> for an operator, or system.healing for an automatic recovery step */
+      /** @description key:<key id>, admin.<email> for an operator, system.healing for an automatic recovery step, or system.maintenance for a maintenance window's restart */
       requested_by: string;
       reason: string;
       /** @description True when the terminal would not close and its job was stopped; null until the cell says */
@@ -1260,15 +1381,40 @@ export interface components {
         [key: string]: string;
       };
       /**
+       * @description The older word for `ha`: active_active asks for HA in hot mode and active_passive in warm mode. Sent with `ha` saying something else is 422
        * @default none
        * @enum {string}
        */
       redundancy: "none" | "active_passive" | "active_active";
+      ha?: components["schemas"]["TerminalHa"];
       /**
        * @description The terminal's refresh rate in milliseconds: how often it sweeps prices and, while positions are open, reads the account. Omitted, the farm's rate applies. Faster than the farm's rate is 422 with details.allowed. With no farm named, only farms that allow the rate are considered, and none with room is 409 no_farm (why no_room). A flat account is read every 60 s whatever this says
        * @enum {integer}
        */
       refresh_ms?: 5000 | 4000 | 3000 | 2000 | 1000 | 500 | 250 | 200;
+    };
+    /** @description MFX Hub HA for one terminal. On, MFX Hub runs a second terminal on the same broker login, on separate hardware, ready to take over; you keep this terminal's id for everything and never see the second one. It is not in your terminal quota, your usage or your terminals per login, and it is not billed while HA is not priced. It is one more session on the login, so the broker's limit of sessions applies. */
+    TerminalHa: {
+      enabled: boolean;
+      /**
+       * @description hot: the second terminal stays logged in and takes over at once. warm: it waits on reserved capacity without a broker session and takes over after one login; not offered yet (422 `unprocessable`). Omitted: the mode this terminal already has, else hot.
+       * @enum {string|null}
+       */
+      mode?: "hot" | "warm" | null;
+    };
+    /** @description This terminal's MFX Hub HA. `enabled: false`, `mode: null` and `fallback_state: off` when HA is not on */
+    TenantTerminalHa: {
+      enabled: boolean;
+      /**
+       * @description The mode in effect; null when HA is off
+       * @enum {string|null}
+       */
+      mode: "hot" | "warm" | null;
+      /**
+       * @description Where the second terminal stands. off: HA is not on. starting: it is being created, placed or logged in. ready: it is logged in and healthy. waiting_for_capacity: there is no separate hardware in the farm to place it on yet. repairing: it exists and is not healthy (offline, failed, degraded or being moved).
+       * @enum {string}
+       */
+      fallback_state: "off" | "starting" | "ready" | "waiting_for_capacity" | "repairing";
     };
     /** @description What a tenant may change on a running terminal. Send only the fields to change */
     TerminalUpdate: {
@@ -1293,6 +1439,11 @@ export interface components {
       farm: components["schemas"]["Ref"];
       broker: components["schemas"]["Ref"];
       server: components["schemas"]["Ref"];
+      /**
+       * @description The kind of the terminal's server as the operator recorded it, the `kind` of `GET /brokers/{id}/servers`. Known before any login, so it answers demo or live while a login is refused. Once the terminal has logged in, `GET /terminals/{id}/account` → `profile.account_type` is the account's own word (demo, live or contest) and wins.
+       * @enum {string|null}
+       */
+      server_kind?: "demo" | "live" | null;
       /** @description e.g. ****3456; null until a credential is submitted */
       login_masked?: string | null;
       streaming: boolean;
@@ -1338,6 +1489,13 @@ export interface components {
            * @enum {string|null}
            */
           attributed_to?: "broker" | null;
+          /** @description As `Condition.broker_words`: the broker's own words when it refused the login */
+          broker_words?: string | null;
+          /**
+           * @description As `Condition.refusal_kind`
+           * @enum {string|null}
+           */
+          refusal_kind?: "invalid_account" | "other" | null;
         };
       };
       instruments: string[];
@@ -1350,6 +1508,7 @@ export interface components {
       redundancy?: "none" | "active_passive" | "active_active";
       /** @enum {string|null} */
       replica_role?: "writer" | "standby" | null;
+      ha?: components["schemas"]["TenantTerminalHa"];
       terminal_build?: number | null;
       /** Format: date-time */
       last_tick_at?: string | null;
@@ -1552,7 +1711,30 @@ export interface components {
       /** @description The Idempotency-Key of the platform command that closed it (closePosition or closePositionBy): the newest such command on this terminal whose outcome is recorded SUCCEEDED, names this position and was recorded within the last 30 s. Absent for a close nobody asked the platform for (sl, tp, stop-out, a person at the terminal), and when the command's outcome was not yet recorded when the close was told; `magic` and `comment` here are the position's own */
       idempotency_key?: string | null;
     };
-    /** @description `data` of a `position.opened` message on the `events` channel: sent once when a position opens on the terminal's account, by anyone (MFX Hub, an expert advisor, the broker's own apps). The terminal reads its positions and tells what changed since it last read them, so a position that opened and closed between two reads is told as `position.opened` then `position.closed`. On the stream every value is text, as on every event, and a field with no value is left out. */
+    /**
+     * @description `data` of a `position.opened` message on the `events` channel: sent once when a position opens on the terminal's account, by anyone (MFX Hub, an expert advisor, the broker's own apps). The terminal reads its positions and tells what changed since it last read them, so a position that opened and closed between two reads is told as `position.opened` then `position.closed`. On the stream every value is text, as on every event, and a field with no value is left out.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "event_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190233:open",
+     *       "ticket": "58190233",
+     *       "symbol": "EURUSD",
+     *       "side": "buy",
+     *       "volume": "0.10",
+     *       "open_price": "1.08412",
+     *       "price_current": "1.08420",
+     *       "sl": "1.08100",
+     *       "tp": "1.09000",
+     *       "profit": "0.80",
+     *       "swap": "0.00",
+     *       "open_time": "2026-10-23T09:15:02Z",
+     *       "magic": "0",
+     *       "comment": "",
+     *       "ts": "2026-10-23T09:15:02Z",
+     *       "idempotency_key": "client-order-0001",
+     *       "order_ticket": "58190233"
+     *     }
+     */
     PositionOpened: {
       /** @description The payload's version; 1 */
       schema_version: string;
@@ -1598,8 +1780,31 @@ export interface components {
       ts: string;
       /** @description The Idempotency-Key of the platform command that opened it (placeOrder): the newest such command on this terminal recorded SUCCEEDED naming this position within the last 30 s. Absent for a position the platform did not open (an expert advisor, the broker's apps) or whose command outcome was not yet recorded */
       idempotency_key?: string;
+      /** @description The MT5 ticket of the order whose deal opened the position, an integer as text: for a position opened by a pending order, that order's ticket, the same order `position_ticket` names on its `order.closed`. Absent from a terminal whose agent does not report it yet */
+      order_ticket?: string;
     };
-    /** @description `data` of a `position.modified` message on the `events` channel: sent once each time the terminal reads an open position with a different stop loss, take profit or volume than it last read - set by anyone, a partial close and each move of a trailing stop included. Each message is the position as it now stands, not the difference. On the stream every value is text, as on every event, and a field with no value is left out: a stop loss or take profit that was removed is absent. */
+    /**
+     * @description `data` of a `position.modified` message on the `events` channel: sent once each time the terminal reads an open position with a different stop loss, take profit or volume than it last read - set by anyone, a partial close and each move of a trailing stop included. Each message is the position as it now stands, not the difference. On the stream every value is text, as on every event, and a field with no value is left out: a stop loss or take profit that was removed is absent.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "event_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190233:modify:1.08412:1.09000:0.05",
+     *       "ticket": "58190233",
+     *       "symbol": "EURUSD",
+     *       "side": "buy",
+     *       "volume": "0.05",
+     *       "open_price": "1.08412",
+     *       "price_current": "1.08455",
+     *       "sl": "1.08412",
+     *       "tp": "1.09000",
+     *       "profit": "2.15",
+     *       "swap": "0.00",
+     *       "open_time": "2026-10-23T09:15:02Z",
+     *       "magic": "0",
+     *       "comment": "",
+     *       "ts": "2026-10-23T09:42:10Z"
+     *     }
+     */
     PositionModified: {
       /** @description The payload's version; 1 */
       schema_version: string;
@@ -1646,7 +1851,242 @@ export interface components {
       /** @description The Idempotency-Key of the platform command that changed it (modifyPosition, closePositionPartial, a trailing stop): the newest such command on this terminal recorded SUCCEEDED naming this position within the last 30 s. Absent for a change the platform did not make */
       idempotency_key?: string;
     };
-    /** @description `data` of a `terminal.state_changed` message on the `events` channel: sent once for each move of a terminal's lifecycle state, after the move is recorded, whoever made it (you, an operator or the platform). `transition_id` names the move in the terminal's history. On the stream every value is text, as on every event. */
+    /**
+     * @description `data` of an `order.placed` message on the `events` channel: sent once when a pending order (a buy or sell limit, stop or stop-limit order) appears on the terminal's account, placed by anyone (MFX Hub, an expert advisor, the broker's own apps). The order in the words of `PendingOrder`. On the stream every value is text, as on every event, and a field with no value is left out.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "event_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190240:order:placed",
+     *       "ticket": "58190240",
+     *       "symbol": "EURUSD",
+     *       "side": "buy",
+     *       "order_type": "limit",
+     *       "volume": "0.10",
+     *       "price": "1.08000",
+     *       "sl": "1.07700",
+     *       "tp": "1.08600",
+     *       "placed_time": "2026-10-23T09:20:00Z",
+     *       "expires_at": "2026-10-23T21:00:00Z",
+     *       "magic": "0",
+     *       "comment": "",
+     *       "ts": "2026-10-23T09:20:00Z",
+     *       "idempotency_key": "client-order-0002"
+     *     }
+     */
+    OrderPlaced: {
+      /** @description The payload's version; 1 */
+      schema_version: string;
+      /**
+       * Format: uuid
+       * @description The join key: the terminal whose account holds the order
+       */
+      terminal_id: string;
+      /** @description Deterministic per order: a replay after a cell restart carries the same one and is sent once */
+      event_id: string;
+      /** @description The order's MT5 ticket, an integer as text: the key the pending list and the other order events carry for it */
+      ticket: string;
+      symbol: string;
+      /** @enum {string} */
+      side: "buy" | "sell";
+      /** @enum {string} */
+      order_type: "limit" | "stop" | "stop_limit";
+      /** @description Lots still to fill, a decimal as text */
+      volume: string;
+      /** @description The order's price, a decimal as text; on a stop-limit order the stop price */
+      price: string;
+      /** @description A stop-limit order's second price, the limit placed when the market reaches `price`; absent on every other order */
+      stop_limit_price?: string;
+      /** @description The stop loss; absent when none */
+      sl?: string;
+      /** @description The take profit; absent when none */
+      tp?: string;
+      /**
+       * Format: date-time
+       * @description When it was placed, UTC
+       */
+      placed_time: string;
+      /**
+       * Format: date-time
+       * @description When it expires, UTC; absent when good till cancelled
+       */
+      expires_at?: string;
+      /** @description The MT5 magic number, an integer as text; 0 when none */
+      magic: string;
+      /** @description The MT5 comment; empty when none */
+      comment: string;
+      /**
+       * Format: date-time
+       * @description When it was placed, UTC: the same instant as `placed_time`
+       */
+      ts: string;
+      /** @description The Idempotency-Key of the platform command that placed it (placeOrder): the newest such command on this terminal recorded SUCCEEDED naming this order within the last 30 s. Absent for an order the platform did not place, or whose command outcome was not yet recorded */
+      idempotency_key?: string;
+    };
+    /**
+     * @description `data` of an `order.modified` message on the `events` channel: sent once each time the terminal reads a pending order with a different price, stop-limit price, stop loss, take profit, expiry or volume than it last read, set by anyone; a partial fill that leaves the rest pending is one. Each message is the order as it now stands, not the difference. On the stream every value is text, and a field with no value is left out.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "event_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190240:order:modify:1.07950:1.07700:1.08600:2026-10-23T21:00:00Z:0.10",
+     *       "ticket": "58190240",
+     *       "symbol": "EURUSD",
+     *       "side": "buy",
+     *       "order_type": "limit",
+     *       "volume": "0.10",
+     *       "price": "1.07950",
+     *       "sl": "1.07700",
+     *       "tp": "1.08600",
+     *       "placed_time": "2026-10-23T09:20:00Z",
+     *       "expires_at": "2026-10-23T21:00:00Z",
+     *       "magic": "0",
+     *       "comment": "",
+     *       "ts": "2026-10-23T09:31:12Z",
+     *       "idempotency_key": "client-modify-0001"
+     *     }
+     */
+    OrderModified: {
+      /** @description The payload's version; 1 */
+      schema_version: string;
+      /**
+       * Format: uuid
+       * @description The join key: the terminal whose account holds the order
+       */
+      terminal_id: string;
+      /** @description Deterministic per change (the ticket with its new price, stop loss, take profit, expiry and volume): a replay after a cell restart carries the same one and is sent once */
+      event_id: string;
+      /** @description The order's MT5 ticket, an integer as text: the key the pending list and the other order events carry for it */
+      ticket: string;
+      symbol: string;
+      /** @enum {string} */
+      side: "buy" | "sell";
+      /** @enum {string} */
+      order_type: "limit" | "stop" | "stop_limit";
+      /** @description Lots still to fill, a decimal as text */
+      volume: string;
+      /** @description The order's price, a decimal as text; on a stop-limit order the stop price */
+      price: string;
+      /** @description A stop-limit order's second price, the limit placed when the market reaches `price`; absent on every other order */
+      stop_limit_price?: string;
+      /** @description The stop loss; absent when none */
+      sl?: string;
+      /** @description The take profit; absent when none */
+      tp?: string;
+      /**
+       * Format: date-time
+       * @description When it was placed, UTC
+       */
+      placed_time: string;
+      /**
+       * Format: date-time
+       * @description When it expires, UTC; absent when good till cancelled
+       */
+      expires_at?: string;
+      /** @description The MT5 magic number, an integer as text; 0 when none */
+      magic: string;
+      /** @description The MT5 comment; empty when none */
+      comment: string;
+      /**
+       * Format: date-time
+       * @description When the terminal saw the change, UTC
+       */
+      ts: string;
+      /** @description The Idempotency-Key of the platform command that changed it (modifyOrder): the newest such command on this terminal recorded SUCCEEDED naming this order within the last 30 s. Absent for a change the platform did not make */
+      idempotency_key?: string;
+    };
+    /**
+     * @description `data` of an `order.closed` message on the `events` channel: sent once when a pending order leaves the account's pending list, for whatever reason. `reason` is the order's own state in the terminal's order history (MT5 `ORDER_STATE`): `filled`, `cancelled`, `expired`, `rejected`; `unknown` when the terminal did not find it in its history within 60 s, or MT5 gave a state outside that list. The platform never infers it from the expiry or from a nearby position. A fill carries `position_ticket`, the position it opened or, on a netting account, went into; `position.opened` carries the same order's ticket as `order_ticket`. The order as it stood when it left. On the stream every value is text, and a field with no value is left out.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "event_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101:58190240:order:closed",
+     *       "ticket": "58190240",
+     *       "symbol": "EURUSD",
+     *       "side": "buy",
+     *       "order_type": "limit",
+     *       "volume": "0.10",
+     *       "price": "1.07950",
+     *       "sl": "1.07700",
+     *       "tp": "1.08600",
+     *       "placed_time": "2026-10-23T09:20:00Z",
+     *       "expires_at": "2026-10-23T21:00:00Z",
+     *       "magic": "0",
+     *       "comment": "",
+     *       "reason": "filled",
+     *       "order_state_raw": "4",
+     *       "position_ticket": "58190240",
+     *       "ts": "2026-10-23T10:02:47Z"
+     *     }
+     */
+    OrderClosed: {
+      /** @description The payload's version; 1 */
+      schema_version: string;
+      /**
+       * Format: uuid
+       * @description The join key: the terminal whose account holds the order
+       */
+      terminal_id: string;
+      /** @description Deterministic per order: a replay after a cell restart carries the same one and is sent once */
+      event_id: string;
+      /** @description The order's MT5 ticket, an integer as text: the key the pending list and the other order events carry for it */
+      ticket: string;
+      symbol: string;
+      /** @enum {string} */
+      side: "buy" | "sell";
+      /** @enum {string} */
+      order_type: "limit" | "stop" | "stop_limit";
+      /** @description Lots still to fill, a decimal as text */
+      volume: string;
+      /** @description The order's price, a decimal as text; on a stop-limit order the stop price */
+      price: string;
+      /** @description A stop-limit order's second price, the limit placed when the market reaches `price`; absent on every other order */
+      stop_limit_price?: string;
+      /** @description The stop loss; absent when none */
+      sl?: string;
+      /** @description The take profit; absent when none */
+      tp?: string;
+      /**
+       * Format: date-time
+       * @description When it was placed, UTC
+       */
+      placed_time: string;
+      /**
+       * Format: date-time
+       * @description When it expires, UTC; absent when good till cancelled
+       */
+      expires_at?: string;
+      /** @description The MT5 magic number, an integer as text; 0 when none */
+      magic: string;
+      /** @description The MT5 comment; empty when none */
+      comment: string;
+      /**
+       * @description Why it left the pending list: MT5 ORDER_STATE in plain words; unknown when it could not be read
+       * @enum {string}
+       */
+      reason: "filled" | "cancelled" | "expired" | "rejected" | "unknown";
+      /** @description MT5's own ORDER_STATE code, an integer as text; absent when the order was not found in the history */
+      order_state_raw?: string;
+      /** @description On a fill, the MT5 ticket of the position it opened or went into, an integer as text; absent otherwise */
+      position_ticket?: string;
+      /**
+       * Format: date-time
+       * @description When it left, UTC: the order's time done in the history, or when the terminal saw it gone
+       */
+      ts: string;
+      /** @description On a cancel, the Idempotency-Key of the platform command that cancelled it (cancelOrder): the newest such command on this terminal recorded SUCCEEDED naming this order within the last 30 s. Absent on a fill, an expiry or a rejection, and on a cancel the platform did not make */
+      idempotency_key?: string;
+    };
+    /**
+     * @description `data` of a `terminal.state_changed` message on the `events` channel: sent once for each move of a terminal's lifecycle state, after the move is recorded, whoever made it (you, an operator or the platform). `transition_id` names the move in the terminal's history. On the stream every value is text, as on every event.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "from": "LOGGING_IN",
+     *       "to": "ACTIVE",
+     *       "reason": "account verified, broker connected",
+     *       "transition_id": "5b1d7e0a-2c44-4f0e-9a51-7d3b8c6e1f20",
+     *       "ts": "2026-10-23T09:02:41Z"
+     *     }
+     */
     TerminalStateChanged: {
       /** @description The payload's version; 1 */
       schema_version: string;
@@ -1695,7 +2135,18 @@ export interface components {
        */
       ts: string;
     };
-    /** @description `data` of a `terminal.condition_changed` message on the `events` channel: sent once when one of a terminal's observed conditions changes status, and when `TicksFresh` moves between its two named `failed` reasons, `slow_feed` and `broker_quiet`. A reason reworded under a status that stands sends nothing. The fields are those of `Condition`. On the stream every value is text, as on every event, and a value that does not exist is empty. */
+    /**
+     * @description `data` of a `terminal.condition_changed` message on the `events` channel: sent once when one of a terminal's observed conditions changes status, and when `TicksFresh` moves between its two named `failed` reasons, `slow_feed` and `broker_quiet`. A reason reworded under a status that stands sends nothing. The fields are those of `Condition`. On the stream every value is text, as on every event, and a value that does not exist is empty.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "condition": "BrokerConnected",
+     *       "status": "failed",
+     *       "reason": "no connection to the broker's server",
+     *       "since": "2026-10-23T10:05:13Z",
+     *       "attributed_to": "broker"
+     *     }
+     */
     TerminalConditionChanged: {
       /** @description The payload's version; 1 */
       schema_version: string;
@@ -1717,8 +2168,28 @@ export interface components {
        * @enum {string}
        */
       attributed_to: "broker" | "";
+      /** @description As `Condition.broker_words`; empty unless the reason is `login_refused` */
+      broker_words?: string;
+      /**
+       * @description As `Condition.refusal_kind`; empty unless the reason is `login_refused`
+       * @enum {string}
+       */
+      refusal_kind?: "invalid_account" | "other" | "";
     };
-    /** @description `data` of a `terminal.operation_changed` message on the `events` channel: sent when a governed operation on a terminal (`TerminalOperation`: a restart, a rebuild, a move, a retire, a retried login, an attach or detach, a drain) is queued, when it starts, and when it ends: settled (SUCCEEDED or FAILED) or ended without running (NOT_STARTED, EXPIRED, CANCELLED, SUPERSEDED). The steps in between are not sent; read `GET /terminals/{id}/operations/{operation_id}` for its timeline. On the stream every value is text, as on every event, and a value that does not exist is empty. */
+    /**
+     * @description `data` of a `terminal.operation_changed` message on the `events` channel: sent when a governed operation on a terminal (`TerminalOperation`: a restart, a rebuild, a move, a retire, a retried login, an attach or detach, a drain) is queued, when it starts, and when it ends: settled (SUCCEEDED or FAILED) or ended without running (NOT_STARTED, EXPIRED, CANCELLED, SUPERSEDED). The steps in between are not sent; read `GET /terminals/{id}/operations/{operation_id}` for its timeline. On the stream every value is text, as on every event, and a value that does not exist is empty.
+     * @example {
+     *       "schema_version": "1",
+     *       "operation_id": "9c2e4b71-0d3a-4e8f-b6a2-1f5c7d9e3a40",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "kind": "restart",
+     *       "state": "SUCCEEDED",
+     *       "step": "RELAUNCHING",
+     *       "forced_stop": "false",
+     *       "cooldown_until": "2026-10-23T10:20:00Z",
+     *       "finished_at": "2026-10-23T10:15:31Z"
+     *     }
+     */
     TerminalOperationChanged: {
       /** @description The payload's version; 1 */
       schema_version: string;
@@ -1757,7 +2228,51 @@ export interface components {
       /** @description UTC date-time when it ended; empty while it runs */
       finished_at: string;
     };
-    /** @description `data` of an `account.profile_changed` message on the `events` channel: the terminal reads its account's slow facts (`AccountProfile`) every 60 seconds and sends this when any of them differs from what it last read, and when it has no earlier reading to compare with. Every fact is sent as it now stands; `changed` names the ones that moved. A fact the terminal could not read is left out. On the stream every value is text, as on every event. */
+    /**
+     * @description `data` of a `terminal.ha_switched` message on the `events` channel: MFX Hub HA moved the terminal to its second terminal, which now carries its orders, quotes and account. The terminal's id is the same before and after; nothing about the second terminal is sent. On the stream every value is text, as on every event.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "reason": "broker_lost",
+     *       "at": "2026-11-01T22:04:31.120Z",
+     *       "took_ms": "40"
+     *     }
+     */
+    TerminalHaSwitched: {
+      /** @description The payload's version; 1 */
+      schema_version: string;
+      /**
+       * Format: uuid
+       * @description The terminal, as you address it
+       */
+      terminal_id: string;
+      /**
+       * @description Why it switched. order: an order arrived while the first terminal could not carry it, and it was placed through the second. broker_lost: the first terminal lost its broker connection. unresponsive: the first terminal stopped reporting. terminal_failed and process_gone: the first terminal failed or its MetaTrader 5 process ended. operator: MFX Hub support switched it.
+       * @enum {string}
+       */
+      reason:
+        "order" | "broker_lost" | "unresponsive" | "terminal_failed" | "process_gone" | "operator";
+      /** @description UTC date-time of the switch, to the millisecond */
+      at: string;
+      /** @description Milliseconds the switch took, an integer as text */
+      took_ms: string;
+    };
+    /**
+     * @description `data` of an `account.profile_changed` message on the `events` channel: the terminal reads its account's slow facts (`AccountProfile`) every 60 seconds and sends this when any of them differs from what it last read, and when it has no earlier reading to compare with. Every fact is sent as it now stands; `changed` names the ones that moved. A fact the terminal could not read is left out. On the stream every value is text, as on every event.
+     * @example {
+     *       "schema_version": "1",
+     *       "terminal_id": "0e6a51a8-65f1-4f4c-9c53-3d6a2f6a0101",
+     *       "currency": "USD",
+     *       "leverage": "500",
+     *       "company": "Example Broker Ltd",
+     *       "account_type": "demo",
+     *       "margin_mode": "hedging",
+     *       "trade_allowed": "true",
+     *       "expert_allowed": "true",
+     *       "changed": "[\"leverage\"]",
+     *       "observed_at": "2026-10-23T09:00:00Z"
+     *     }
+     */
     AccountProfileChanged: {
       /** @description The payload's version; 1 */
       schema_version: string;
@@ -1806,7 +2321,7 @@ export interface components {
       comment?: string;
     };
     /**
-     * @description Final states are SUCCEEDED, FAILED, EXPIRED and REJECTED. UNKNOWN is visible and NOT final: the order may have reached the broker and its outcome could not be read (a timeout after send, a lost connection). Reconciliation against the terminal's deal history resolves it to SUCCEEDED or FAILED on its own. A client must not re-send an order whose command is UNKNOWN, because that is how one fill becomes two. A NOT_EXECUTED answer from the terminal reads REJECTED with its reason. SUCCEEDED means the broker did what the command asked: for a market order, filled; for a pending order (limit, stop, stop_limit), accepted onto the broker's book with its ticket in `tickets.order` - not filled (OrderPlace).
+     * @description Final states are SUCCEEDED, FAILED, EXPIRED and REJECTED. UNKNOWN is visible and NOT final: the order may have reached the broker and its outcome could not be read (a timeout after send, a lost connection). The platform asks the terminal that ran it to read its deal and order history again, every minute, until `resolve_by` (15 minutes after it became UNKNOWN by default), and the answer resolves it to SUCCEEDED, FAILED or REJECTED. `command.unknown` is sent when it becomes UNKNOWN and `command.resolved` when it is resolved. One still UNKNOWN at `resolve_by` stays UNKNOWN, because it may have run, and is resolved by an operator with the tenant. A client must not re-send an order whose command is UNKNOWN, because that is how one fill becomes two. A NOT_EXECUTED answer from the terminal reads REJECTED with its reason. SUCCEEDED means the broker did what the command asked: for a market order, filled; for a pending order (limit, stop, stop_limit), accepted onto the broker's book with its ticket in `tickets.order` - not filled (OrderPlace).
      * @enum {string}
      */
     CommandState:
@@ -1831,7 +2346,7 @@ export interface components {
     /** @description What happened at the broker, once the command has an outcome. `retryable` is set on every reason, so an SDK decides from the result and not from a table that can drift. It is written once, from the broker's answer to the command: for a pending order_place that is the placement (`mt5_retcode` 10008, `tickets.order` set, no deal, no `exec_price`), and the later fill never rewrites it (OrderPlace says where the fill is seen). */
     CommandResult: {
       ok: boolean;
-      /** @description Granular reason; null when ok */
+      /** @description Granular reason; null when ok. Every reason, with whether it is retryable, its typical cause and what to do, is in the error catalogue at the root of this document */
       reason: string | null;
       /** @description Whether sending the same order again, under a NEW Idempotency-Key, can succeed. Always false while the state is UNKNOWN */
       retryable: boolean;
@@ -1891,6 +2406,11 @@ export interface components {
       expires_at?: string | null;
       /** @description Null until the command has an outcome */
       result: components["schemas"]["CommandResult"] | null;
+      /**
+       * Format: date-time
+       * @description While the command is UNKNOWN: until when the platform asks the terminal that ran it to read the outcome again. After it, an operator resolves it with the tenant. Null in every other state
+       */
+      resolve_by?: string | null;
     };
     /** @description `data` of a `command.completed` or `command.failed` message on the `events` channel and on `results:{terminal_id}`: sent once when a command reaches an outcome, `command.completed` for SUCCEEDED and `command.failed` for every other end (FAILED, EXPIRED, REJECTED). It carries what `GET /commands/{id}` serves as `result`. On the stream every value is text, `tickets` and `latencies` are JSON objects as text, and a value that does not exist is empty. */
     CommandOutcome: {
@@ -1922,6 +2442,78 @@ export interface components {
       magic?: string;
       /** @description CommandResult.comment: the comment the command sent; empty where it is null or the order was placed without one. Always sent */
       comment?: string;
+    };
+    /** @description `data` of a `command.unknown` message on the `events` channel: sent when a command becomes UNKNOWN, from any state. Its outcome could not be read and it may have reached the broker, so it must not be sent again. The platform asks the terminal that ran it to read the outcome again until `resolve_by`; `command.resolved` follows when it is resolved. Values are text as in CommandOutcome; `state` is UNKNOWN. */
+    CommandUnknown: {
+      schema_version: string;
+      /** Format: uuid */
+      command_id: string;
+      idempotency_key: string;
+      /**
+       * Format: uuid
+       * @description The join key: the terminal the command ran on
+       */
+      terminal_id: string;
+      state: components["schemas"]["CommandState"];
+      /** @description As CommandOutcome.retcode */
+      retcode: string;
+      /** @description As CommandOutcome.reason */
+      reason: string;
+      /** @description CommandTickets as JSON text */
+      tickets: string;
+      /** @description Decimal as a string; empty when nothing filled */
+      exec_price: string;
+      /** @description Lots, decimal as a string; empty when nothing filled */
+      exec_volume: string;
+      /** @description JSON text: {"broker_ms": integer or null, "agent_ms": integer or null} */
+      latencies: string;
+      /** @description As CommandOutcome.terminal_state */
+      terminal_state: string;
+      /** @description As CommandOutcome.magic */
+      magic?: string;
+      /** @description As CommandOutcome.comment */
+      comment?: string;
+      /**
+       * Format: date-time
+       * @description Until when the platform asks the terminal again (the moment it became UNKNOWN plus the resolve window, 15 minutes by default). Still UNKNOWN after it, an operator resolves it with the tenant, and a later answer still sends command.resolved
+       */
+      resolve_by: string;
+    };
+    /** @description `data` of a `command.resolved` message on the `events` channel: sent when an UNKNOWN command reaches its outcome (SUCCEEDED, FAILED or REJECTED), beside the `command.completed` or `command.failed` that outcome sends as always. Values are text as in CommandOutcome and describe the outcome. */
+    CommandResolved: {
+      schema_version: string;
+      /** Format: uuid */
+      command_id: string;
+      idempotency_key: string;
+      /**
+       * Format: uuid
+       * @description The join key: the terminal the command ran on
+       */
+      terminal_id: string;
+      state: components["schemas"]["CommandState"];
+      /** @description As CommandOutcome.retcode */
+      retcode: string;
+      /** @description As CommandOutcome.reason */
+      reason: string;
+      /** @description CommandTickets as JSON text */
+      tickets: string;
+      /** @description Decimal as a string; empty when nothing filled */
+      exec_price: string;
+      /** @description Lots, decimal as a string; empty when nothing filled */
+      exec_volume: string;
+      /** @description JSON text: {"broker_ms": integer or null, "agent_ms": integer or null} */
+      latencies: string;
+      /** @description As CommandOutcome.terminal_state */
+      terminal_state: string;
+      /** @description As CommandOutcome.magic */
+      magic?: string;
+      /** @description As CommandOutcome.comment */
+      comment?: string;
+      /**
+       * Format: date-time
+       * @description When the command became UNKNOWN
+       */
+      unknown_since: string;
     };
     Position: {
       /** Format: int64 */
@@ -2021,7 +2613,10 @@ export interface components {
       sl?: string | null;
       /** @description As `sl`, for the take profit */
       tp?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the broker executed the deal, in UTC (converted from the broker server's own clock)
+       */
       time: string;
       magic: number;
       comment: string;
@@ -2066,6 +2661,48 @@ export interface components {
     CandleList: {
       /** @description Oldest first by bar time; at most 1000 bars per call */
       items: components["schemas"]["Candle"][];
+      /**
+       * @description Where the bars came from: the platform's store (no cell), one of your terminals, or closed bars from the store and the forming bar from a terminal
+       * @enum {string}
+       */
+      source?: "store" | "terminal" | "store+terminal";
+      /**
+       * Format: date-time
+       * @description For an answer from the store: the oldest bar of the span the platform vouches holds every bar
+       */
+      complete_from?: string | null;
+      /**
+       * Format: date-time
+       * @description For an answer from the store: the newest bar of that span. Holding bars up to it, you are missing none. Older than the last closed boundary while a gap is repaired, with Retry-After
+       */
+      complete_to?: string | null;
+    };
+    /** @description md.candle_closed on candles:{server_id}:{symbol}:{tf}: a closed bar, once, read by one of your own terminals. Never replayed; prev_ts tells you whether you missed one */
+    MdCandleClosed: {
+      /** @example 1 */
+      schema_version: string;
+      /** Format: uuid */
+      server_id: string;
+      /** @description The broker's own name */
+      symbol: string;
+      /** @enum {string} */
+      timeframe: "M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1" | "W1" | "MN1";
+      /**
+       * Format: date-time
+       * @description Bar open time, UTC; a D1 bar opens at the broker's midnight
+       */
+      ts: string;
+      o: string;
+      h: string;
+      l: string;
+      c: string;
+      /** @description Tick volume */
+      v: number;
+      /**
+       * Format: date-time
+       * @description Open time of the bar before this one in the terminal's history. Not the ts of the last bar you hold: you missed bars; read GET /v1/md/candles from your last ts
+       */
+      prev_ts: string;
     };
     Tick: {
       /**
@@ -2394,28 +3031,114 @@ export interface components {
        */
       as_of: string;
     };
-    /** @description One metric's consumption in one period (recorded hourly). Quantities are decimals as strings. */
-    UsageRow: {
-      /** @enum {string} */
-      metric: "terminal_hours" | "md_msgs" | "commands" | "ws_minutes";
-      quantity: string;
-      /** Format: date-time */
-      period_start: string;
-      /** Format: date-time */
-      period_end: string;
+    /** @description One limit: the figure in force, where it comes from, whether the platform applies it yet, and how much of it is in use where that is measured. Under `key` it is the figure for the calling key; under `tenant` the ceiling for all the tenant's keys together. */
+    UsageLimit: {
+      /** @description Under `key`, for commands_per_s, commands_burst and ws_conns: the lower of the key's cap and the tenant's ceiling (a key with no cap may use the whole ceiling). A key whose commands_per_s cap applies and that has no commands_burst cap of its own bursts to twice that cap, never past the tenant's burst (source key_override, key_cap null). Otherwise the figure itself. */
+      limit: number;
+      /**
+       * @description Where `limit` comes from. A tenant ceiling is the tenant's own figure, else the plan's. Under `key`, key_override when the key's own cap or figure is what applies.
+       * @enum {string}
+       */
+      source: "plan" | "tenant_override" | "key_override";
+      /** @description Under `key`, for commands_per_s, commands_burst and ws_conns only: the key's own cap, null when the key has none (the default). Absent elsewhere. */
+      key_cap?: number | null;
+      /** @description False while the figure is published and not yet applied to this tenant: a request over it is not refused. True once it is: an execution command over its rate is 429 `rate_limited` with `Retry-After`, and the stream refuses, drops or closes as its limit says, naming the limit in `details.limit`. */
+      enforced: boolean;
+      /** @description Current use where the platform measures it; null where it does not yet */
+      used: number | null;
     };
-    /** @description What this tenant has consumed and what the calling key may still spend. The limits are the key's own, not the tenant's, so one runaway integration cannot starve a tenant's production traffic; `budget_source` says whether `budget_remaining` is a measurement or the configured allowance, exactly as the `X-MFX-Budget-Source` header does. */
+    /** @description The calling key's and its tenant's limits, each with where it comes from and how much of it is in use. Read it to pace an integration below the limits rather than finding them through 429s. */
     Usage: {
-      items: components["schemas"]["UsageRow"][];
-      /** @description The calling key's ceilings. */
-      limits: {
-        commands_per_s?: number | null;
-        md_msgs_per_s?: number | null;
-        ws_conns?: number | null;
+      /**
+       * @description The tenant's plan, whose defaults apply where nothing is overridden
+       * @enum {string}
+       */
+      plan: "standard" | "enterprise" | "system";
+      /** @description The limits as they apply to the calling key. For commands_per_s, commands_burst and ws_conns that is the tenant's ceiling, lowered by the key's own cap where it has one. */
+      key: {
+        key_id: string;
+        /** @description Execution commands per second, steady */
+        commands_per_s: components["schemas"]["UsageLimit"];
+        /** @description The most execution commands accepted at once; the steady rate refills it */
+        commands_burst: components["schemas"]["UsageLimit"];
+        /** @description Market-data messages per second on this key's stream connections */
+        md_msgs_per_s: components["schemas"]["UsageLimit"];
+        /** @description Stream connections open at once */
+        ws_conns: components["schemas"]["UsageLimit"];
+        /** @description `account:{terminal_id}` channels one connection may hold at once */
+        account_channels_per_conn: components["schemas"]["UsageLimit"];
       };
-      budget_remaining: number;
-      /** @enum {string} */
-      budget_source: "counted" | "configured" | "unconfigured";
+      tenant: {
+        /** @description Execution commands per second, steady, all the tenant's keys together */
+        commands_per_s: components["schemas"]["UsageLimit"];
+        /** @description The most execution commands accepted at once, all keys together; the steady rate refills it */
+        commands_burst: components["schemas"]["UsageLimit"];
+        /** @description Stream connections open at once, all keys together */
+        ws_conns: components["schemas"]["UsageLimit"];
+        /** @description Terminals the tenant may have, not counting retired ones. A request over it is 409 `quota_exceeded`. */
+        terminals: {
+          limit: number;
+          used: number;
+          /** @enum {string} */
+          source: "tenant_override" | "platform_default";
+        };
+      };
+      /** @description The farms the tenant may place a terminal on, each with what one of its cells holds and how many terminals are on it now. */
+      farms: {
+        farm: components["schemas"]["Ref"];
+        /** @description Terminals one cell of the farm holds, not the farm's total: a farm adds cells by itself as it fills, so it has no total of its own. Null where no cap is set */
+        cap: number | null;
+        /** @description Terminals on the whole farm now, not counting retired ones. It may be more than `cap` once the farm has more than one cell */
+        used: number;
+      }[];
+      /** @description How many terminals may run on one broker login. */
+      per_login: {
+        /** @description 0: only the broker server's own limit applies */
+        plan_limit: number;
+        /** @description Each enabled broker server, with the number of sessions it is known to allow on one login. */
+        servers: {
+          broker: components["schemas"]["Ref"];
+          server: components["schemas"]["Ref"];
+          /** @description Null: not known yet */
+          max_sessions: number | null;
+          /**
+           * @description `probed`: seen to hold this many, a lower bound; `limit`: the ceiling found; `operator`: entered, final
+           * @enum {string|null}
+           */
+          max_sessions_source: "probed" | "limit" | "operator" | null;
+        }[];
+      };
+      /** @description The rules a terminal operation (restart, rebuild, move, retire, retry, attach, detach, drain) is refused by. */
+      lifecycle: {
+        /** @description Seconds a terminal rests after an operation of this kind; refused 429 `cooldown` */
+        cooldown_s: {
+          [key: string]: number;
+        };
+        /** @description Operations of this kind and its kin per tenant per hour; refused 429 `tenant_rate` */
+        tenant_rate_per_hour: {
+          [key: string]: number;
+        };
+        /** @description Operations of this kind and its kin a tenant may have open at once; refused 429 `concurrency` */
+        concurrency: {
+          [key: string]: number;
+        };
+        /** @description The share of a farm's terminals that may be in an operation at once (never fewer than one); refused 429 `farm_capacity` */
+        farm_share: number;
+        /** @description How long a refused operation may wait its turn */
+        queue_max_wait_s: number;
+      };
+      webhooks: {
+        endpoints: {
+          limit: number;
+          used: number;
+        };
+        timeout_ms: number;
+        /** @description The waits before each retry of a failed delivery */
+        retry_after_seconds: number[];
+        pause_after_hours: number;
+        failure_days: number;
+        in_flight_per_endpoint: number;
+      };
       /** Format: date-time */
       as_of: string;
     };
@@ -2455,7 +3178,7 @@ export interface components {
        */
       state: "pending" | "streaming" | "degraded" | "stopped";
       /**
-       * @description Why the subscription is `degraded`; null in every other state. `symbol_removed`: the broker no longer lists the symbol. `subscription_refused`: the broker refused it on every one of your ACTIVE terminals on the server that carries it. `terminal_disconnected`: you have no ACTIVE terminal on the server and no report of the symbol has arrived for the unknown window. `report_stale`: a terminal is ACTIVE and still none has arrived, for instance because none of them carries the symbol any more. `no_ticks_in_session`: the symbol's own hours say it is trading and it has not ticked for the silence window (measured at the newest report); it recovers on two reports in a row that each bring a new tick inside the window, or when its session closes. Nothing is degraded for silence outside the symbol's trading session.
+       * @description Why the subscription is `degraded`; null in every other state. `symbol_removed`: the broker no longer lists the symbol. `subscription_refused`: the broker refused it on every one of your ACTIVE terminals on the server that carries it. `terminal_disconnected`: you have no ACTIVE terminal on the server and no report of the symbol has arrived for the unknown window. `report_stale`: a terminal is ACTIVE and still none has arrived, for instance because none of them carries the symbol any more. `no_ticks_in_session`: the symbol's own hours say it is trading and it has not ticked for the silence window (measured at the newest report); it recovers on two reports in a row that each bring a new tick inside the window, or when its session closes. Nothing is degraded for silence outside the symbol's trading session. `bars_unwatched`: the subscription asks for timeframes and none of your terminals on the server watches the symbol, so no closed bar can be sent. `bars_gap`: a closed-bar series has a gap the platform could not repair (no terminal to read it through); GET says how far it is complete.
        * @enum {string|null}
        */
       degraded_reason?:
@@ -2464,6 +3187,8 @@ export interface components {
         | "terminal_disconnected"
         | "report_stale"
         | "no_ticks_in_session"
+        | "bars_unwatched"
+        | "bars_gap"
         | null;
       /**
        * Format: date-time
@@ -2683,6 +3408,101 @@ export interface components {
        */
       last_tick_at?: string;
     };
+    /**
+     * @description `data` of a `maintenance.window_changed` message on the `events` channel, and the same event to webhooks: sent when a window is announced to you, starts, its expected end or its message changes, ends or is cancelled. The fields are those of `TenantMaintenance`, as the window stands after the change; `GET /maintenance` answers the same. On the stream every value is text, as on every event.
+     * @example {
+     *       "schema_version": "1",
+     *       "window_id": "5b1d7e0a-2c44-4f0e-9a51-7d3b8c6e1f20",
+     *       "label": "MW-0031",
+     *       "state": "in_progress",
+     *       "starts_at": "2026-11-05T10:00:00Z",
+     *       "ends_at": "2026-11-05T12:00:00Z",
+     *       "message": "Planned maintenance on 3 of your terminals until about 12:00 UTC",
+     *       "terminals": "3",
+     *       "change": "eta_moved"
+     *     }
+     */
+    MaintenanceWindowChanged: {
+      /** @description The payload's version; 1 */
+      schema_version: string;
+      /** Format: uuid */
+      window_id: string;
+      /** @description MW-0031 */
+      label: string;
+      /** @enum {string} */
+      state: "scheduled" | "in_progress" | "completed" | "cancelled";
+      /** Format: date-time */
+      starts_at: string;
+      /**
+       * Format: date-time
+       * @description The current expected end: the ETA while in progress
+       */
+      ends_at: string;
+      /** @description The notice as sent to you, with your own counts; empty when the notice is off */
+      message: string;
+      /** @description How many of your terminals are in the window; GET /maintenance/{id}/terminals lists them, each with its own expected time */
+      terminals: string;
+      /**
+       * @description What moved this time
+       * @enum {string}
+       */
+      change: "announced" | "started" | "eta_moved" | "message_changed" | "ended" | "cancelled";
+    };
+    TerminalJournal: {
+      /** Format: uuid */
+      terminal_id: string;
+      /**
+       * @description live: read from the running terminal now. last_words: kept by its cell when it stopped
+       * @enum {string}
+       */
+      from: "live" | "last_words";
+      /**
+       * Format: date-time
+       * @description When the cell read the journal: now for live, the stop for last_words
+       */
+      read_at: string;
+      /**
+       * @description For last_words, why the cell kept them; null for live
+       * @enum {string|null}
+       */
+      stopped?: "stopped" | "failed" | "retired" | null;
+      /** @description Newest first */
+      lines: components["schemas"]["JournalLine"][];
+    };
+    JournalLine: {
+      /**
+       * Format: date-time
+       * @description UTC: the journal file's date and the line's time, converted from the cell's clock
+       */
+      ts: string;
+      /** @description The journal's own source column as MetaTrader writes it, e.g. Network, Terminal, Trades */
+      source: string;
+      /** @description The line as written, account numbers masked, file paths removed, at most 200 characters. MetaTrader's journal has no level column, so none is given */
+      message: string;
+    };
+    BrokerCatalogue: {
+      /** Format: uuid */
+      server_id: string;
+      /** @description The broker's symbol variant, as on GET /brokers/{id}/symbols */
+      account_type: string;
+      /**
+       * @description As SymbolPage.source
+       * @enum {string}
+       */
+      source: "live" | "last_known";
+      /** @description sha256 over every listed symbol's name, spec_hash, description and identity fields, in name order */
+      catalogue_hash: string;
+      /** @description Symbols listed now (removed ones excluded) */
+      symbols: number;
+      /**
+       * Format: date-time
+       * @description The newest refreshed_at of its rows
+       */
+      refreshed_at: string;
+    };
+    BrokerCatalogueList: {
+      items: components["schemas"]["BrokerCatalogue"][];
+    };
     /** @description `data` of a `symbol.spec_changed` message on the `events` channel: sent once for each change a tenant's terminal reported to a symbol on its own catalogue (one server and account type) - the specification a program sizes a trade by, what trading the broker allows, the trade sessions, or the symbol's removal. A pip value that moves with the exchange rate is not a change and sends nothing; read it on the catalogue. On the stream every value is text, and `before` and `after` are JSON objects as text. */
     SymbolSpecChanged: {
       schema_version: string;
@@ -2697,8 +3517,19 @@ export interface components {
       server_id: string;
       account_type: string;
       symbol: string;
-      /** @enum {string} */
-      change: "spec" | "trading" | "sessions" | "removed";
+      /**
+       * @description added: new on the catalogue; came_back: listed again after a removal; description: the broker's long name changed; identity: path, isin, exchange, category, currency_base, basis or calc_mode changed. MetaTrader has no rename: a renamed symbol is removed and added, and isin is how the two may be matched
+       * @enum {string}
+       */
+      change:
+        | "spec"
+        | "trading"
+        | "sessions"
+        | "removed"
+        | "added"
+        | "came_back"
+        | "description"
+        | "identity";
       /** @description The spec before (digits, contract_size, volume_min, volume_step, volume_max, trade_mode, margin_currency, pip_value_per_lot, trade_sessions, description), decimals as strings */
       before: Record<string, never> | null;
       /** @description The spec after, same shape; null for a removal */
@@ -2878,8 +3709,27 @@ export interface components {
       /** Format: date-time */
       refreshed_at: string;
       status: components["schemas"]["SymbolStatus"];
+      /** @description Where the broker files the symbol (SYMBOL_PATH), e.g. Shares\US\NVDA. Null when the broker leaves it empty; never inferred */
+      path?: string | null;
+      /** @description SYMBOL_ISIN, as the broker fills it; null when empty */
+      isin?: string | null;
+      /** @description SYMBOL_EXCHANGE; null when empty */
+      exchange?: string | null;
+      /** @description SYMBOL_CATEGORY, the broker's own free text; null when empty */
+      category?: string | null;
+      /** @description SYMBOL_CURRENCY_BASE; null when empty */
+      currency_base?: string | null;
+      /** @description SYMBOL_BASIS, the underlying asset of a derivative; null when empty */
+      basis?: string | null;
+      /** @description SYMBOL_TRADE_CALC_MODE as MetaTrader names it, lower-case without its prefix (forex, futures, cfd, cfdindex, cfdleverage, forex_no_leverage, exch_stocks, exch_futures, exch_options, exch_options_margin, exch_bonds, exch_stocks_moex, exch_bonds_moex, serv_collateral); a number without a name is given as its digits */
+      calc_mode?: string | null;
     };
     SymbolPage: {
+      /**
+       * @description live: a terminal of yours runs on this server and account type. last_known: none does any more; the rows are the last your terminals reported, each with its refreshed_at
+       * @enum {string}
+       */
+      source?: "live" | "last_known";
       /** @description Opaque (created_at, id) cursor for the following page; null on the last page */
       next_cursor: string | null;
       /** @description How many items are in THIS page; never a total */
@@ -3167,6 +4017,37 @@ export interface components {
       symbol: string;
       timeframe: string;
     };
+    /** @description A parameter set for the terminal's EA. Your keys go in `params`; the platform writes them, with `enabled` and the version it assigns, to the EA's parameter file (`MQL5/Files/mfx/params.json`), so they never collide with the platform's own keys. */
+    ExpertAdvisorParametersPut: {
+      /** @description False asks your EA to stop trading (a soft pause): it is honoured by the EA, and the hard stop stays the platform's */
+      enabled: boolean;
+      /** @description Your EA's settings, any JSON object. With the platform's keys the file is at most 256 KiB and 32 levels deep; no key anywhere may be named like a credential (password, secret, token, api key, private key, login) */
+      params: {
+        [key: string]: unknown;
+      };
+    };
+    /** @description The newest parameter set for a terminal, and how far its EA has taken it up */
+    ExpertAdvisorParameters: {
+      /** Format: uuid */
+      terminal_id: string;
+      /** @description Assigned by the platform; one more than the set before */
+      version: number;
+      enabled: boolean;
+      params: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      accepted_at: string;
+      /** @description The version your EA last said it runs, from its heartbeat line as the terminal reported it; null until it has said */
+      applied_version: number | null;
+      /**
+       * Format: date-time
+       * @description When the platform first heard that applied_version
+       */
+      applied_seen_at: string | null;
+      /** @description True when applied_version equals version. False past the grace window (60 s unless an operator changed it) raises the terminal condition EaParamsNotApplied */
+      converged: boolean;
+    };
     TenantExpertAdvisorPage: {
       /** @description Opaque (created_at, id) cursor for the following page; null on the last page */
       next_cursor: string | null;
@@ -3347,6 +4228,21 @@ export interface operations {
       query?: {
         cursor?: components["parameters"]["cursor"];
         limit?: components["parameters"]["limit"];
+        /** @description key:value, the label's exact key and value, case-sensitive. Repeat it to need several: a terminal is listed only when it carries every one. A value without a colon is 400 validation_error */
+        label?: string[];
+        /** @description one state, or several comma-separated */
+        state?: (
+          | "REQUESTED"
+          | "PROVISIONING"
+          | "LOGGING_IN"
+          | "ACTIVE"
+          | "OFFLINE"
+          | "PARKED"
+          | "DRAINING"
+          | "DRAINED"
+          | "RETIRED"
+          | "FAILED"
+        )[];
       };
       header?: never;
       path?: never;
@@ -3511,6 +4407,50 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
+  getTerminalJournal: {
+    parameters: {
+      query?: {
+        /** @description How many lines, newest first; 1 to 200, default 100 */
+        lines?: number;
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the lines */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TerminalJournal"];
+        };
+      };
+      /** @description state_error - the terminal is not running and no last lines are held (details.reason not_running), for example before its first launch or more than 24 hours after it stopped */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description upstream_error - the cell did not answer within 10 s (details.reason terminal_timeout), or could not read the journal (journal_unreadable) */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
   replaceTerminalInstruments: {
     parameters: {
       query?: never;
@@ -3581,6 +4521,36 @@ export interface operations {
     responses: {
       /** @description accepted; the terminal is DRAINING, and DRAINED once its cell has stopped it */
       202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TenantTerminal"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  setTerminalHa: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TerminalHa"];
+      };
+    };
+    responses: {
+      /** @description the terminal as it now is, with `ha` */
+      200: {
         headers: {
           [name: string]: unknown;
         };
@@ -3730,6 +4700,59 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ExpertAdvisorAttachment"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getExpertAdvisorParameters: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the newest set */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExpertAdvisorParameters"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  putExpertAdvisorParameters: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ExpertAdvisorParametersPut"];
+      };
+    };
+    responses: {
+      /** @description accepted, numbered and on its way to the terminal */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExpertAdvisorParameters"];
         };
       };
       default: components["responses"]["Error"];
@@ -4152,7 +5175,9 @@ export interface operations {
   listDeals: {
     parameters: {
       query: {
+        /** @description A UTC instant; the broker's own clock is applied on the way to MT5 */
         from: string;
+        /** @description A UTC instant, as from */
         to: string;
         /** @description Only the deals of this position (Deal.position): its opening deal, any partial closes and its closing deal, inside from/to. A position open longer than 31 days is read window by window */
         position?: number;
@@ -4185,7 +5210,7 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
-      /** @description upstream_error - terminal_timeout (no answer within 10 s) or deals_unreadable */
+      /** @description upstream_error - terminal_timeout (no answer within 10 s), deals_unreadable, or broker_clock_unknown (no clock measured for the server yet: retry once a terminal on it has a price) */
       503: {
         headers: {
           [name: string]: unknown;
@@ -4268,6 +5293,29 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TenantBrokerServerPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listCatalogues: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the catalogues */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BrokerCatalogueList"];
         };
       };
       default: components["responses"]["Error"];
@@ -4517,16 +5565,28 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description candles, oldest first */
+      /** @description candles, oldest first; Retry-After when the store is still repairing the window (complete_to says how far it is whole) */
       200: {
         headers: {
+          /** @description Seconds; only while the store repairs a gap in the window */
+          "Retry-After"?: number;
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["CandleList"];
         };
       };
-      /** @description upstream_error — terminal_timeout (no answer within 10 s) or the cell's word */
+      /** @description reads_busy — your reads through terminals on this server are at their limit in flight (md.candle_reads_in_flight); ask again after Retry-After */
+      429: {
+        headers: {
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description upstream_error — terminal_timeout (no answer within 10 s), broker_clock_unknown (no clock measured for the server yet), or the cell's word */
       503: {
         headers: {
           [name: string]: unknown;
@@ -4563,7 +5623,7 @@ export interface operations {
           "application/json": components["schemas"]["TickList"];
         };
       };
-      /** @description upstream_error — terminal_timeout (no answer within 10 s) or the cell's word */
+      /** @description upstream_error — terminal_timeout (no answer within 10 s), broker_clock_unknown (no clock measured for the server yet), or the cell's word */
       503: {
         headers: {
           [name: string]: unknown;
@@ -4631,7 +5691,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Consumption per metric, the calling key's limits, and the budget left */
+      /** @description The limits, their sources and their use */
       200: {
         headers: {
           "X-MFX-Budget-Remaining": components["headers"]["BudgetRemaining"];
@@ -4841,7 +5901,7 @@ export interface operations {
         cursor?: components["parameters"]["cursor"];
         limit?: components["parameters"]["limit"];
         /** @description one state, or several comma-separated. completed lists the last 30 days */
-        state?: "scheduled" | "in_progress" | "completed" | "cancelled";
+        state?: ("scheduled" | "in_progress" | "completed" | "cancelled")[];
       };
       header?: never;
       path?: never;
@@ -4903,7 +5963,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description over WS connection quota */
+      /** @description Over the tenant's connection ceiling or the key's cap (`ws_conns`, `details.scope`). Not sent as an HTTP status: the upgrade succeeds, one `error` op with `rate_limited` follows, and the connection closes with 4029. */
       429: {
         headers: {
           "Retry-After": components["headers"]["RetryAfter"];
@@ -5119,7 +6179,7 @@ export interface operations {
     parameters: {
       query?: {
         /** @description one value, or several comma-separated */
-        state?: "retrying" | "delivered" | "dead";
+        state?: ("retrying" | "delivered" | "dead")[];
         cursor?: components["parameters"]["cursor"];
         limit?: components["parameters"]["limit"];
       };

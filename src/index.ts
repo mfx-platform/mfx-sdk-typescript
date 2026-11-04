@@ -11,8 +11,25 @@ export type { Answer, Budget, ClientOptions, RequestSpec } from "./client.js";
 export * from "./errors.js";
 export { Page } from "./pages.js";
 export { Catalog } from "./catalog.js";
-export type { Quote, QuoteOptions } from "./catalog.js";
-export { Execution } from "./execution.js";
+export type { BrokerCatalogue, CatalogSymbol, Quote, QuoteOptions, SymbolPage } from "./catalog.js";
+export type {
+  MaintenanceWindowChanged,
+  SymbolSpecChange,
+  SymbolSpecChanged,
+  TerminalConditionChanged,
+} from "./events.js";
+export { Accounts } from "./accounts.js";
+export type {
+  Account,
+  Deal,
+  DealPageOptions,
+  DealWindow,
+  PendingOrder,
+  PendingOrderList,
+  Position,
+  PositionList,
+} from "./accounts.js";
+export { Execution, POLL_CAP_MS, POLL_FROM_MS } from "./execution.js";
 export {
   CLOSE_LIFETIME,
   CLOSE_REAUTHENTICATE,
@@ -33,14 +50,30 @@ export type {
   StreamStats,
   Timeframe,
 } from "./stream.js";
-export type { OrderType, PlaceOrder, Side } from "./execution.js";
+export type {
+  ClosePosition,
+  ClosePositionBy,
+  ClosePositionPartial,
+  Keyed,
+  ModifyOrder,
+  ModifyPosition,
+  OrderType,
+  PlaceOrder,
+  SetTrailingStop,
+  Side,
+  WaitFor,
+} from "./execution.js";
 export type { CommandState, ExecutionResult, Reason, Tickets } from "./results.js";
 export { Terminals, isUsable } from "./terminals.js";
 export type {
   CreateTerminal,
+  JournalLine,
+  JournalOptions,
   PageOptions,
   Redundancy,
   Terminal,
+  TerminalFilter,
+  TerminalJournal,
   TerminalState,
 } from "./terminals.js";
 export { RequestSigner, SigningKey, signingMessage } from "./signing.js";
@@ -48,4 +81,4 @@ export { KEY_HEADER, NONCE_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./
 export type { components, operations, paths } from "./generated/api.js";
 
 /** This package's version. */
-export const VERSION = "0.1.2";
+export const VERSION = "0.2.0";
