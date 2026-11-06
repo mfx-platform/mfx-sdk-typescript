@@ -26,6 +26,7 @@ import WebSocket from "ws";
 
 import type { MfxClient } from "./client.js";
 import { AuthError, MfxError, MfxTransportError, errorFor } from "./errors.js";
+import { USER_AGENT } from "./version.js";
 
 /** The server says why it hung up. 4001 is the one reconnecting cannot fix. */
 export const CLOSE_REAUTHENTICATE = 4001;
@@ -280,7 +281,10 @@ export class MfxStream implements AsyncIterable<StreamEvent> {
   /** Opens the connection. {@link MfxClient.stream} does this for you. */
   async open(): Promise<this> {
     const path = new URL(this.#url).pathname;
-    this.#connection = await this.#connect(this.#url, this.#client.signer.headersFor("GET", path));
+    this.#connection = await this.#connect(this.#url, {
+      ...this.#client.signer.headersFor("GET", path),
+      "User-Agent": USER_AGENT,
+    });
     return this;
   }
 

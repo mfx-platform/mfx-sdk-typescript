@@ -80,5 +80,4 @@ export { RequestSigner, SigningKey, signingMessage } from "./signing.js";
 export { KEY_HEADER, NONCE_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.js";
 export type { components, operations, paths } from "./generated/api.js";
 
-/** This package's version. */
-export const VERSION = "0.2.0";
+export { VERSION } from "./version.js";

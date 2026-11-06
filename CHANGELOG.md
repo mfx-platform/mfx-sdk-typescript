@@ -4,6 +4,14 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.2.1
+
+### Added
+
+- Every request the SDK sends, and the stream's upgrade, carries
+  `User-Agent: mfx-sdk-typescript/<version>`, built from the package's own version, so MFX Hub can
+  tell which SDK and which version made each call.
+
 ## 0.2.0
 
 ### Added

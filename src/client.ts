@@ -18,6 +18,7 @@ import { Catalog } from "./catalog.js";
 import { Execution } from "./execution.js";
 import { MfxStream, type StreamOptions } from "./stream.js";
 import { Terminals } from "./terminals.js";
+import { USER_AGENT } from "./version.js";
 
 /** Default time a single request may take. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -207,6 +208,7 @@ export class MfxClient {
       spec.body === undefined ? new Uint8Array() : Buffer.from(JSON.stringify(spec.body));
     const headers: Record<string, string> = {
       Accept: "application/json",
+      "User-Agent": USER_AGENT,
       ...this.#signer.headersFor(spec.method, url.pathname + url.search, body),
     };
     if (spec.body !== undefined) headers["Content-Type"] = "application/json";
