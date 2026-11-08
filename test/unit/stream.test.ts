@@ -55,7 +55,7 @@ class Scripted implements StreamConnection {
   }
 }
 
-function scripted(...connections: Scripted[]) {
+function scripted<C extends StreamConnection>(...connections: C[]) {
   const opened: { url: string; headers: Readonly<Record<string, string>> }[] = [];
   const queue = [...connections];
   return {
@@ -411,5 +411,92 @@ describe("reads and reconnects share one jittered backoff", () => {
     ]);
     const low = new MfxClient(BASE, "k", SEED, { random: () => 0 });
     expect(low.backoffMs(3)).toBe(0);
+  });
+});
+
+/** A connection whose read waits until the connection is closed, as a quiet socket does. */
+class Quiet implements StreamConnection {
+  closes = 0;
+  #fail: ((error: Error) => void) | null = null;
+  send(): Promise<void> {
+    return Promise.resolve();
+  }
+  recv(): Promise<string> {
+    return new Promise((_done, fail) => {
+      this.#fail = fail;
+    });
+  }
+  close(): Promise<void> {
+    this.closes++;
+    this.#fail?.(closed(1000));
+    return Promise.resolve();
+  }
+}
+
+describe("closing a stream ends it, even while a read waits or a reconnect is under way", () => {
+  it("ends a waiting read and does not reconnect", async () => {
+    const net = scripted(new Quiet(), new Quiet());
+    const stream = await client().stream({ connect: net.connect });
+    const pending = stream.next();
+    await stream.close();
+    expect(await pending).toBeNull();
+    expect(net.opened).toHaveLength(1);
+    expect(stream.stats.reconnects).toBe(0);
+    expect(await stream.next()).toBeNull();
+  });
+
+  it("ends a loop over the stream that is waiting for its next message", async () => {
+    const net = scripted<StreamConnection>(new Scripted([msg("events", 1)]), new Quiet());
+    const stream = await client().stream({ connect: net.connect });
+    const seen: unknown[] = [];
+    const loop = (async () => {
+      for await (const event of stream) {
+        seen.push(event);
+        await stream.close();
+      }
+    })();
+    await loop;
+    expect(seen).toHaveLength(1);
+    expect(net.opened).toHaveLength(1);
+  });
+
+  it("does not open a connection when closed during a reconnect's backoff", async () => {
+    let release: () => void = () => undefined;
+    const slow = new MfxClient("https://api.dev.mfxhub.com/v1", "mfxk_TEST", SEED, {
+      sleep: () =>
+        new Promise<void>((done) => {
+          release = done;
+        }),
+      random: () => 0.5,
+    });
+    const net = scripted<StreamConnection>(new Scripted([closed(1006, "gone")]), new Quiet());
+    const stream = await slow.stream({ connect: net.connect });
+    const pending = stream.next();
+    await new Promise((done) => setTimeout(done, 0)); // the read sees 1006 and backs off
+    await stream.close();
+    release();
+    expect(await pending).toBeNull();
+    expect(net.opened).toHaveLength(1);
+  });
+
+  it("closes a connection that finishes opening after the stream was closed", async () => {
+    const late = new Quiet();
+    let opened: (connection: StreamConnection) => void = () => undefined;
+    let opens = 0;
+    const connect = () => {
+      opens++;
+      if (opens === 1) return Promise.resolve<StreamConnection>(new Scripted([closed(1006)]));
+      return new Promise<StreamConnection>((done) => {
+        opened = done;
+      });
+    };
+    const stream = await client().stream({ connect });
+    const pending = stream.next();
+    await new Promise((done) => setTimeout(done, 0)); // the reconnect is opening
+    await stream.close();
+    opened(late);
+    expect(await pending).toBeNull();
+    expect(late.closes).toBe(1);
+    expect(opens).toBe(2);
   });
 });

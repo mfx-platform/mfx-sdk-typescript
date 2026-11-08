@@ -259,6 +259,8 @@ export class MfxStream implements AsyncIterable<StreamEvent> {
     refused: 0,
   };
   #connection: StreamConnection | null = null;
+  /** The caller closed the stream: nothing reconnects it, and every read is null from here on. */
+  #closed = false;
 
   /** Use {@link MfxClient.stream}. */
   constructor(client: MfxClient, options: StreamOptions = {}) {
@@ -316,8 +318,12 @@ export class MfxStream implements AsyncIterable<StreamEvent> {
     await this.#send({ op: "unsubscribe", ch: channel });
   }
 
-  /** Close the connection, if one is open. */
+  /**
+   * Close the stream for good. A read waiting on it ends with null, a reconnect under way is
+   * given up, and the stream is never opened again.
+   */
   async close(): Promise<void> {
+    this.#closed = true;
     const connection = this.#connection;
     this.#connection = null;
     if (connection !== null) await connection.close();
@@ -343,6 +349,8 @@ export class MfxStream implements AsyncIterable<StreamEvent> {
       try {
         raw = await connection.recv();
       } catch (error) {
+        // The caller's own close ends the read; it is not a drop to come back from.
+        if (this.#closed) return null;
         if (!(error instanceof StreamClosed)) throw error;
         if (!(await this.#reopen(error))) return null;
         continue;
@@ -429,7 +437,13 @@ export class MfxStream implements AsyncIterable<StreamEvent> {
     this.#bump("reconnects");
     // The client's own backoff, so the stream and the reads lean on this tenant's quota alike.
     await this.#client.pause(this.#client.backoffMs(this.#stats.reconnects));
+    if (this.#closedNow()) return false; // closed while waiting out the backoff
     await this.open();
+    if (this.#closedNow()) {
+      // closed while the connection was being opened: that one is closed too
+      await this.close();
+      return false;
+    }
     for (const [channel, last] of [...this.#channels]) {
       if (replayable(channel) && last !== null) {
         await this.#send({ op: "resume", ch: channel, after_seq: last });
@@ -441,6 +455,11 @@ export class MfxStream implements AsyncIterable<StreamEvent> {
       }
     }
     return true;
+  }
+
+  /** Read afresh after an await: close() may have run while this was waiting. */
+  #closedNow(): boolean {
+    return this.#closed;
   }
 
   async #send(message: Readonly<Record<string, unknown>>): Promise<void> {
