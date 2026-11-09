@@ -97,10 +97,78 @@ function stateQuery(state: TerminalFilter["state"]): string | undefined {
 /**
  * Can this terminal be used right now: market data, execution, account reads? True only in ACTIVE.
  * OFFLINE means its cell is not reporting; the platform brings it back by itself, so retry rather
- * than create another.
+ * than create another. QUEUED means it is placed and waiting for its turn to start: its cell
+ * starts terminals a few at a time, and `queue.expected_start_at` says when to expect it.
  */
 export function isUsable(terminal: Pick<Terminal, "state">): boolean {
   return terminal.state === "ACTIVE";
+}
+
+/** Where a QUEUED terminal waits: its place, its expected start and why it waits. */
+export type TerminalQueue = components["schemas"]["TerminalQueue"];
+/** A bulk restart or retire: what was taken, what was refused, and its expected finish. */
+export type BulkAction = components["schemas"]["BulkAction"];
+
+/** The states a terminal passes through on its way to ACTIVE; every other state is settled. */
+const ON_ITS_WAY: ReadonlySet<string> = new Set([
+  "REQUESTED",
+  "QUEUED",
+  "PROVISIONING",
+  "LOGGING_IN",
+]);
+const POLL_FROM_MS = 2_000;
+const POLL_CAP_MS = 15_000;
+/** A QUEUED terminal is read again at its expected start, but never less often than this. */
+const QUEUED_CAP_MS = 60_000;
+
+/** What {@link Terminals.waitUntilActive} takes. */
+export interface WaitOptions {
+  /** How long to wait in all, in milliseconds. 15 minutes unless given. */
+  readonly timeoutMs?: number;
+}
+
+/** Which of your terminals a bulk action takes, and why. At least one filter. */
+export interface BulkAsk {
+  /** Why; written to the audit log and to each item. */
+  readonly reason: string;
+  /** Required: the same key sent again returns the same action. */
+  readonly idempotencyKey: string;
+  readonly farmId?: string;
+  readonly brokerId?: string;
+  readonly terminalIds?: readonly string[];
+  /** Without it, a terminal with open positions is refused and the rest are taken. */
+  readonly confirmOpenPositions?: boolean;
+}
+
+function bulkBody(ask: BulkAsk): components["schemas"]["BulkTerminalAsk"] {
+  if (typeof ask.reason !== "string" || ask.reason.trim() === "" || ask.reason.length > 500) {
+    throw new RangeError("reason is 1 to 500 characters");
+  }
+  if (ask.farmId === undefined && ask.brokerId === undefined && ask.terminalIds === undefined) {
+    throw new RangeError("a bulk action names farmId, brokerId or terminalIds");
+  }
+  if (ask.terminalIds !== undefined && ask.terminalIds.length > 1000) {
+    throw new RangeError("terminalIds is at most 1000");
+  }
+  return {
+    reason: ask.reason,
+    confirm_open_positions: ask.confirmOpenPositions ?? false,
+    ...(ask.farmId === undefined ? {} : { farm_id: uuid("farmId", ask.farmId) }),
+    ...(ask.brokerId === undefined ? {} : { broker_id: uuid("brokerId", ask.brokerId) }),
+    ...(ask.terminalIds === undefined
+      ? {}
+      : { terminal_ids: ask.terminalIds.map((id) => uuid("terminalIds", id)) }),
+  };
+}
+
+/** How long to wait before the next read of a terminal still on its way. */
+function nextWaitMs(terminal: Terminal, backoffMs: number, nowMs: number): number {
+  const expected = terminal.state === "QUEUED" ? terminal.queue?.expected_start_at : undefined;
+  if (typeof expected === "string") {
+    const until = Date.parse(expected) - nowMs;
+    if (Number.isFinite(until)) return Math.min(Math.max(until, POLL_FROM_MS), QUEUED_CAP_MS);
+  }
+  return Math.min(backoffMs, POLL_CAP_MS);
 }
 
 /** Provision and inspect the terminals this key's tenant owns. */
@@ -195,5 +263,77 @@ export class Terminals {
       body,
       idempotencyKey: key,
     })) as Terminal;
+  }
+
+  /**
+   * Read the terminal until it is no longer on its way to ACTIVE (REQUESTED, QUEUED, PROVISIONING,
+   * LOGGING_IN), or until `timeoutMs` has been waited. Returns the last read either way: ACTIVE,
+   * a state it settled in instead (FAILED, for one), or still on its way when the time ran out.
+   *
+   * A QUEUED terminal is read again at its `queue.expected_start_at` (between 2 s and a minute
+   * away), not on a fixed beat: its cell starts terminals a few at a time, so asking every two
+   * seconds tells nothing new. Any other state is read again after 2 s, doubling to 15 s.
+   */
+  async waitUntilActive(terminalId: string, options: WaitOptions = {}): Promise<Terminal> {
+    const timeoutMs = options.timeoutMs ?? 15 * 60_000;
+    if (typeof timeoutMs !== "number" || !(timeoutMs >= 0)) {
+      throw new RangeError("timeoutMs is 0 or more");
+    }
+    let waited = 0;
+    let backoff = POLL_FROM_MS;
+    let terminal = await this.get(terminalId);
+    while (ON_ITS_WAY.has(terminal.state) && waited < timeoutMs) {
+      const ms = Math.min(nextWaitMs(terminal, backoff, Date.now()), timeoutMs - waited);
+      await this.#client.pause(ms);
+      waited += ms;
+      backoff *= 2;
+      terminal = await this.get(terminalId);
+    }
+    return terminal;
+  }
+
+  /**
+   * Restart many of your terminals at once. Each is judged by the rules of a single restart; a
+   * refused one is listed in `refused` with its rule's code and the rest are taken. Each cell
+   * carries its share at its own pace, so the terminals already running on it are not slowed.
+   * Answered at once with the action and its expected finish; its items never expire.
+   */
+  async bulkRestart(ask: BulkAsk): Promise<BulkAction> {
+    return this.#bulk("/terminals:restart", ask);
+  }
+
+  /** Retire many of your terminals at once, as {@link bulkRestart} restarts them. */
+  async bulkRetire(ask: BulkAsk): Promise<BulkAction> {
+    return this.#bulk("/terminals:retire", ask);
+  }
+
+  /** A bulk action's progress: counts per state, what was refused, and its expected finish. */
+  async getBulkAction(bulkActionId: string): Promise<BulkAction> {
+    const id = uuid("bulkActionId", bulkActionId);
+    return (await this.#client.read({ method: "GET", path: `/bulk-actions/${id}` })) as BulkAction;
+  }
+
+  /** Cancel a bulk action: its waiting items are cancelled, running ones finish. */
+  async cancelBulkAction(
+    bulkActionId: string,
+    options: { readonly idempotencyKey: string },
+  ): Promise<BulkAction> {
+    const id = uuid("bulkActionId", bulkActionId);
+    return (await this.#client.write({
+      method: "POST",
+      path: `/bulk-actions/${id}/cancel`,
+      idempotencyKey: idempotencyKey(options.idempotencyKey),
+    })) as BulkAction;
+  }
+
+  async #bulk(path: string, ask: BulkAsk): Promise<BulkAction> {
+    const key = idempotencyKey(ask.idempotencyKey);
+    const body = bulkBody(ask);
+    return (await this.#client.write({
+      method: "POST",
+      path,
+      body,
+      idempotencyKey: key,
+    })) as BulkAction;
   }
 }

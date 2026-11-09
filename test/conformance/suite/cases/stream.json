@@ -133,5 +133,78 @@
       ]
     ],
     "observe": {"returns": {"seqs": [1], "refused": 1}}
+  },
+  {
+    "id": "stream.close_ends_a_waiting_read",
+    "rule": "Closing the stream ends a read that is waiting for the next message: the read finishes with nothing, and the stream does not reconnect",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.close_waiting", "args": {"channels": ["events"]}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"send": {"op": "ack", "ch": "events"}}
+      ]
+    ],
+    "observe": {"returns": {"ended": true, "reconnects": 0}}
+  },
+  {
+    "id": "stream.unknown_type_is_delivered",
+    "rule": "A message whose type this SDK has never heard of is delivered as it came, with its type, not dropped or refused",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events"], "count": 2}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"send": {"op": "ack", "ch": "events"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 1, "type": "order.teleported", "data": {"ticket": "1"}}},
+        {"send": {"op": "msg", "ch": "events", "seq": 2, "type": "terminal.state_changed", "data": {}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [1, 2], "types": ["order.teleported", "terminal.state_changed"], "dropped": 0, "refused": 0}}
+  },
+  {
+    "id": "stream.each_channel_resumes_from_its_own_seq",
+    "rule": "After a reconnect every channel that replays is resumed from the last seq seen on that channel, not from one position for all",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events", "results:0191f0c2-aaaa-7bbb-8ccc-000000000001"], "count": 4}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"recv": {"op": "subscribe", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 7, "type": "terminal.state_changed", "data": {}}},
+        {"send": {"op": "msg", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001", "seq": 20, "type": "command.completed", "data": {}}},
+        {"close": 4009, "reason": "lifetime reached"}
+      ],
+      [
+        {"recv": {"op": "resume", "ch": "events", "after_seq": 7}},
+        {"recv": {"op": "resume", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001", "after_seq": 20}},
+        {"send": {"op": "msg", "ch": "events", "seq": 8, "type": "terminal.state_changed", "data": {}}},
+        {"send": {"op": "msg", "ch": "results:0191f0c2-aaaa-7bbb-8ccc-000000000001", "seq": 21, "type": "command.completed", "data": {}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [7, 20, 8, 21], "dropped": 0, "reconnects": 1, "lifetime_reconnects": 1}}
+  },
+  {
+    "id": "stream.reconnects_again_and_again",
+    "rule": "Each lifetime close (4009) is followed by a reconnect that resumes from the newest seq, however many times it happens, and every one is counted",
+    "source": "WebSocket stream",
+    "call": {"op": "stream.read", "args": {"channels": ["events"], "count": 3}},
+    "stream": [
+      [
+        {"recv": {"op": "subscribe", "ch": "events"}},
+        {"send": {"op": "msg", "ch": "events", "seq": 1, "type": "terminal.state_changed", "data": {}}},
+        {"close": 4009, "reason": "lifetime reached"}
+      ],
+      [
+        {"recv": {"op": "resume", "ch": "events", "after_seq": 1}},
+        {"send": {"op": "msg", "ch": "events", "seq": 2, "type": "terminal.state_changed", "data": {}}},
+        {"close": 4009, "reason": "lifetime reached"}
+      ],
+      [
+        {"recv": {"op": "resume", "ch": "events", "after_seq": 2}},
+        {"send": {"op": "msg", "ch": "events", "seq": 3, "type": "terminal.state_changed", "data": {}}}
+      ]
+    ],
+    "observe": {"returns": {"seqs": [1, 2, 3], "dropped": 0, "reconnects": 2, "lifetime_reconnects": 2}}
   }
 ]

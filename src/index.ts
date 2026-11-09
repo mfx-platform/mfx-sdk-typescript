@@ -67,6 +67,8 @@ export type { CommandState, ExecutionResult, Reason, Tickets } from "./results.j
 export { Terminals, isUsable } from "./terminals.js";
 export type {
   CreateTerminal,
+  BulkAction,
+  BulkAsk,
   JournalLine,
   JournalOptions,
   PageOptions,
@@ -74,8 +76,19 @@ export type {
   Terminal,
   TerminalFilter,
   TerminalJournal,
+  TerminalQueue,
   TerminalState,
+  WaitOptions,
 } from "./terminals.js";
+export { TradingAccounts } from "./trading-accounts.js";
+export type {
+  AccountEnvironment,
+  AccountState,
+  TradingAccount,
+  TradingAccountFilter,
+  TradingAccountPageOptions,
+  Venue,
+} from "./trading-accounts.js";
 export { RequestSigner, SigningKey, signingMessage } from "./signing.js";
 export { KEY_HEADER, NONCE_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.js";
 export type { components, operations, paths } from "./generated/api.js";

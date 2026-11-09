@@ -19,6 +19,7 @@ import { Catalog } from "./catalog.js";
 import { Execution } from "./execution.js";
 import { MfxStream, type StreamOptions } from "./stream.js";
 import { Terminals } from "./terminals.js";
+import { TradingAccounts } from "./trading-accounts.js";
 import { USER_AGENT } from "./version.js";
 
 /** Default time a single request may take. */
@@ -126,6 +127,8 @@ export class MfxClient {
   readonly catalog: Catalog;
   /** The trading account behind a terminal: figures, positions, pending orders and deals. */
   readonly accounts: Accounts;
+  /** The trading accounts over every venue: an MT5 account, and later a cTrader one. */
+  readonly tradingAccounts: TradingAccounts;
 
   /**
    * @param baseUrl the API's base, including the version: `https://api.mfxhub.com/v1`, or
@@ -153,6 +156,7 @@ export class MfxClient {
     this.execution = new Execution(this);
     this.catalog = new Catalog(this);
     this.accounts = new Accounts(this);
+    this.tradingAccounts = new TradingAccounts(this);
   }
 
   /** The id of the key this client signs with. Safe to log, unlike the private key. */
@@ -220,7 +224,9 @@ export class MfxClient {
 
   /** One attempt, signed afresh. Transport faults become MfxTransportError or MfxTimeout. */
   async send(spec: RequestSpec): Promise<Answer> {
-    const url = new URL(spec.path.replace(/^\//, ""), this.#base);
+    // "./" keeps a path with a colon in its first segment (`/terminals:restart`) relative: without
+    // it the URL parser reads `terminals:` as a scheme and the request leaves the API.
+    const url = new URL("./" + spec.path.replace(/^\/+/, ""), this.#base);
     for (const [name, value] of Object.entries(spec.query ?? {})) {
       if (value === null || value === undefined) continue;
       if (typeof value === "object") {

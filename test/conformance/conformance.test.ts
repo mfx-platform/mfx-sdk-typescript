@@ -158,6 +158,9 @@ async function call(
   if (op === "stream.read") {
     return readStream(client, a.channels as string[], Number(a.count));
   }
+  if (op === "stream.close_waiting") {
+    return closeWaiting(client, a.channels as string[]);
+  }
   if (op in VOCABULARY.ops) throw new NotYet(`this SDK has no ${op} yet`);
   throw new Error(`this runner does not know the operation ${JSON.stringify(op)}`);
 }
@@ -198,6 +201,33 @@ async function readStream(
     resyncs: stats.resyncs,
     refused: stats.refused,
   };
+}
+
+/**
+ * Leave a read waiting on a quiet stream, close the stream, and see whether the read ended: it
+ * has when it finishes within 2 s with nothing, no message and no error.
+ */
+async function closeWaiting(
+  client: MfxClient,
+  channels: readonly string[],
+): Promise<Record<string, unknown>> {
+  const stream = await client.stream({ maxReconnects: 3 });
+  for (const channel of channels) await stream.subscribe(channel);
+  const waiting = stream.next().then(
+    (event) => event === null,
+    () => false,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await stream.close();
+  const ended = await Promise.race([
+    waiting,
+    new Promise<boolean>((resolve) => {
+      setTimeout(() => {
+        resolve(false);
+      }, 2000);
+    }),
+  ]);
+  return { ended, reconnects: stream.stats.reconnects };
 }
 
 async function hub(path: string, body?: unknown): Promise<unknown> {

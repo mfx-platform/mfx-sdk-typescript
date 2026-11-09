@@ -110,6 +110,16 @@
         "refused"
       ],
       "note": "open the stream against the fake hub (reconnecting allowed, no real wait between attempts), subscribe each channel in order, read until count data messages have arrived, then close. seqs and types are those messages in order; the rest are the stream's own counters: messages a seq gap proves were missed, connections after the first, 4009 and 4008 closes, resyncs, and channels the platform refused"
+    },
+    "stream.close_waiting": {
+      "args": [
+        "channels"
+      ],
+      "returns": [
+        "ended",
+        "reconnects"
+      ],
+      "note": "open the stream against the fake hub (reconnecting allowed, no real wait between attempts) and subscribe each channel in order. Start a read for the next message and leave it waiting while the hub sends nothing more (give it a moment, 100 ms). Close the stream. ended is true when the waiting read finished within 2 s with no message and no error; reconnects is the stream's count of connections after the first, which closing must leave at 0"
     }
   },
   "markers": {

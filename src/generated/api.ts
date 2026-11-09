@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+  "/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List your trading accounts over every venue, newest first (cursor pagination)
+     * @description Every account of yours, retired ones included, newest first. `venue`, `environment` and `state` narrow the list in the query, before the page is cut, so a filtered page is never short for being filtered.
+     */
+    get: operations["listTradingAccounts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * One trading account, by its id or by the id of one of its terminals
+     * @description An MT5 account is found by its own id or by the id of either of its HA terminals. Another tenant's account, or an id that is not an account of yours, is 404.
+     */
+    get: operations["getTradingAccount"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/terminals": {
     parameters: {
       query?: never;
@@ -19,9 +61,93 @@ export interface paths {
     put?: never;
     /**
      * Provision a terminal — answered at once in state REQUESTED; the move to a cell is asynchronous
-     * @description A broker whose permission is `unknown` is accepted in the development environment with the response header `X-MFX-Warning: broker_permission_unknown`, and refused `broker_not_supported` in production. Refused at request time, never passed to a terminal: an unsupported broker or server (422), a farm that does not carry the usages (409), a redundancy the farm does not offer (409). The credential is submitted separately (`POST /terminals/{id}/credentials`), so a terminal can exist before its login does. Several terminals may use the same broker login, on every plan: the limits are checked when the credential is submitted. `farm_id` is optional: omitted, the platform chooses a farm and says which on the answer; none fits is 409 `no_farm`, with `details.why` one of `no_usage` (no farm you can use offers what this terminal needs), `no_region` (none in the server's region) or `no_room`. `refresh_ms` faster than the farm's rate is 422 with `details.allowed`; with no farm named, only farms that allow the rate are considered. A changed rate a cell cannot carry is the PATCH's 409 `no_room`; create queues the terminal for placement. The tenant's plan decides the farm: enterprise and system tenants' terminals go to their own farms, standard tenants' to the shared farms. A named farm outside the plan is 409 `farm_not_in_plan`; with no farm named the platform chooses within the plan. A tenant already at its terminal quota is 409 `quota_exceeded` with `details {quota, in_use}`.
+     * @description A broker whose permission is `unknown` is accepted in the development environment with the response header `X-MFX-Warning: broker_permission_unknown`, and refused `broker_not_supported` in production. Refused at request time, never passed to a terminal: an unsupported broker or server (422), a farm that does not carry the usages (409), a redundancy the farm does not offer (409). The credential is submitted separately (`POST /terminals/{id}/credentials`), so a terminal can exist before its login does. Several terminals may use the same broker login, on every plan: the limits are checked when the credential is submitted. A tenant with its own farms (enterprise and system plans) names the farm of every terminal: omitted, it is 422 `farm_required` with `details.farms` listing its farms taking terminals. For a standard tenant `farm_id` is optional: omitted, the platform chooses a shared farm and says which on the answer; none fits is 409 `no_farm`, with `details.why` one of `no_usage` (no farm you can use offers what this terminal needs), `no_region` (none in the server's region) or `no_room`. `refresh_ms` faster than the farm's rate is 422 with `details.allowed`; with no farm named, only farms that allow the rate are considered. A changed rate a cell cannot carry is the PATCH's 409 `no_room`; create queues the terminal for placement. The tenant's plan decides the farm: enterprise and system tenants' terminals go to their own farms, standard tenants' to the shared farms. A named farm outside the plan is 409 `farm_not_in_plan`; with no farm named a standard tenant is given a shared farm. A tenant already at its terminal quota is 409 `quota_exceeded` with `details {quota, in_use}`.
      */
     post: operations["createTerminal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/terminals:restart": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Restart many of your terminals at once - accepted at once, carried out at the pace of their cells
+     * @description One request for many terminals. Each terminal the filter names is judged by the same rules as `POST /terminals/{id}/restart`; a refused one is listed in `refused` with its rule's code and the rest are taken. Each taken terminal is one operation in its cell's line, and each cell carries them at its own pace, so the terminals already running on it are not slowed. The answer is 202 with the action and its expected finish; follow it at `GET /bulk-actions/{id}`, or each operation as usual. The items never expire. The same Idempotency-Key returns the same action. 422 `validation_error` when no filter is given.
+     */
+    post: operations["bulkRestartTerminals"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/terminals:retire": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Retire many of your terminals at once - accepted at once, carried out at the pace of their cells
+     * @description One request for many terminals. Each terminal the filter names is judged by the same rules as `POST /terminals/{id}/retire`; a refused one is listed in `refused` with its rule's code and the rest are taken. Each taken terminal is one operation in its cell's line, and each cell carries them at its own pace, so the terminals already running on it are not slowed. The answer is 202 with the action and its expected finish; follow it at `GET /bulk-actions/{id}`, or each operation as usual. The items never expire. The same Idempotency-Key returns the same action. 422 `validation_error` when no filter is given.
+     */
+    post: operations["bulkRetireTerminals"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/bulk-actions/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * A bulk action's progress and its expected finish
+     * @description Counts per state, what was refused and why, and when the last item is expected to end. 404 for an action that is not yours
+     */
+    get: operations["getBulkAction"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/bulk-actions/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel a bulk action - its waiting items are cancelled, running ones finish
+     * @description Every item still QUEUED settles CANCELLED; items already running finish as they would have. 409 `state_error` once it has ended
+     */
+    post: operations["cancelBulkAction"];
     delete?: never;
     options?: never;
     head?: never;
@@ -178,7 +304,7 @@ export interface paths {
     put?: never;
     /**
      * Restart a stuck terminal — governed, followed as an operation
-     * @description Close the terminal gracefully (60 s), stop it by force only if it will not close, relaunch it, and report SUCCEEDED only once it produces ticks again. Seven rules are checked in order before anything is written, the same guard the platform's automatic recovery takes: one lifecycle operation per terminal at a time (409 `operation_in_progress`), a cooldown per terminal (429 `cooldown`), open positions need `confirm_open_positions` (409 `positions_open`) while the platform's open-position confirmation setting is on (it is off unless an operator turns it on), a tenant rate (429 `tenant_rate`), tenant concurrency (429 `concurrency`), a farm blast radius (429 `farm_capacity`), and the general budget. A refusal names its rule in `error.code` and carries `Retry-After` when waiting helps. With `queue: true` the four busy refusals (cooldown, tenant rate, concurrency, farm capacity) are held instead: 202 with `state: QUEUED` and where it waits, started by the platform when it can, and settled EXPIRED if it has not started by `queue.expires_at`. A terminal has at most one waiting operation: the same kind again returns it with `duplicate: true`; a stronger kind replaces it (it settles SUPERSEDED); a weaker one is 409 `superseded_by_waiting` with `details.operation_id`. The same Idempotency-Key returns the original operation; a different body under it is 409.
+     * @description Close the terminal gracefully (60 s), stop it by force only if it will not close, relaunch it, and report SUCCEEDED only once it produces ticks again. Seven rules are checked in order before anything is written, the same guard the platform's automatic recovery takes: one lifecycle operation per terminal at a time (409 `operation_in_progress`), a cooldown per terminal (429 `cooldown`), open positions need `confirm_open_positions` (409 `positions_open`) while the platform's open-position confirmation setting is on (it is off unless an operator turns it on), a tenant rate (429 `tenant_rate`), tenant concurrency (429 `concurrency`), a farm blast radius (429 `farm_capacity`), and the general budget. A refusal names its rule in `error.code` and carries `Retry-After` when waiting helps. Unless `queue: false` is sent, the four busy refusals (cooldown, tenant rate, concurrency, farm capacity) are held instead: 202 with `state: QUEUED` and where it waits, started by the platform when it can, and settled EXPIRED if it has not started by `queue.expires_at`. A terminal has at most one waiting operation: the same kind again returns it with `duplicate: true`; a stronger kind replaces it (it settles SUPERSEDED); a weaker one is 409 `superseded_by_waiting` with `details.operation_id`. The same Idempotency-Key returns the original operation; a different body under it is 409.
      */
     post: operations["restartTerminal"];
     delete?: never;
@@ -800,7 +926,21 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Historical candles by bar time, from the platform's store when it holds the window complete, else read through one of your own terminals on the server; at most 1000 bars per call, the newest of the window */
+    /**
+     * Historical candles by bar time, from the platform's store when it holds the window complete, else read through one of your own terminals on the server; at most 1000 bars per call, the newest of the window
+     * @description Where the bars come from is in `source`: `store` (the platform's candle store, which keeps
+     *     closed bars of the series you read and costs your terminals nothing), `terminal` (read
+     *     through one of your own ACTIVE terminals on the server), or `store+terminal` (closed bars
+     *     from the store, the rest from a terminal).
+     *
+     *     **Reads that reach a terminal are limited per terminal per minute.** Each such read makes
+     *     MetaTrader on your terminal load that history, and a terminal flooded with deep reads stops
+     *     serving its prices and orders. Past the limit the answer is 429 `terminal_reads_limit` with
+     *     `Retry-After` (the seconds to the next minute); `details.limit` says the limit. Reads the
+     *     store answers are never counted. To stay well under it: keep closed bars once you have them
+     *     (they never change), follow new bars on the candles channel (`md.candle_closed`) instead of
+     *     polling, and read only the range you are missing.
+     */
     get: operations["getCandles"];
     put?: never;
     post?: never;
@@ -1039,6 +1179,967 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/risk/policies": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The tenant's account policies, newest first */
+    get: operations["listRiskPolicies"];
+    put?: never;
+    /** Create a policy; its first version holds the rules. Nothing is in force until it is activated on accounts */
+    post: operations["createRiskPolicy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/policies/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /** A policy, its current version and the accounts it is active on */
+    get: operations["getRiskPolicy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/policies/{id}/versions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /** Every version of a policy, newest first; a version never changes */
+    get: operations["listRiskPolicyVersions"];
+    put?: never;
+    /** A new version of a policy, with what changed and whether it relaxes protection. Accounts keep the version in force until it is activated */
+    post: operations["createRiskPolicyVersion"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/policies/{id}/versions/{version}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+        version: number;
+      };
+      cookie?: never;
+    };
+    /** One version of a policy */
+    get: operations["getRiskPolicyVersion"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/policies/{id}/activate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Put a version in force on accounts; each account's outcome is answered separately
+     * @description An account holds one active policy. Activating a version that relaxes the one in force on an account needs `risk:override` and a `reason`, for that account. Takes effect on the next account read. `risk.policy_activated` is sent for each account that changed.
+     */
+    post: operations["activateRiskPolicy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Every account of the tenant with its allowance, drawdown, exposure, restriction and coverage */
+    get: operations["listRiskAccounts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/accounts/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    /** One account's figures, each with the inputs and their times */
+    get: operations["getRiskAccount"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/accounts/{id}/deactivate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** End the account's activation; no rule applies to it afterwards */
+    post: operations["deactivateRiskAccount"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/accounts/{id}/clear": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Clear a breach or lift a restriction before it would clear by itself; a drawdown breach clears only this way */
+    post: operations["clearRiskBreach"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/accounts/{id}/equity": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    /** The account's equity and balance series from the stored account reads (one a minute and on every change) */
+    get: operations["getRiskEquity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/coverage": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Coverage counts by kind and state, and every account where a kind is not healthy */
+    get: operations["getRiskCoverage"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/planner/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Size a trade from a risk budget with the broker's specification and check it against every rule; nothing is sent to the broker
+     * @description Read-only: no Idempotency-Key. The volume is rounded down to the symbol's step and never enlarges the budget; when the symbol's minimum volume costs more than the budget no volume is offered (`reason: volume_min_over_budget`). A cost the specification does not give is 422 `validation_error` with `details.reason = assumption_required` until the caller states it. The answer expires at `expires_at` or when the price moves `risk.preview_max_move_points`.
+     */
+    post: operations["previewRiskPlan"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/planner/check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Check an order already sized against every rule, exactly as the pre-trade check would; nothing is sent */
+    post: operations["checkRiskOrder"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/plans": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The tenant's exit plans, newest first */
+    get: operations["listRiskPlans"];
+    put?: never;
+    /**
+     * An exit plan on an open position, or an order placed with its plan (checked as any entry; managing when the position opens)
+     * @description A position has one manager. A plan on a position that already has one (a plan or a standalone trailing stop) needs `replace: true`, or is 409 `conflict` with `details.reason = position_managed` and `details.manager`. A plan with a trailing step owns its trailing stop. With `order`, the answer carries the command that places it.
+     */
+    post: operations["createRiskPlan"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/plans/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /** An exit plan, each step with who holds it, its state and its outcome */
+    get: operations["getRiskPlan"];
+    put?: never;
+    post?: never;
+    /** End the plan; broker-held stops stay where they are */
+    delete: operations["endRiskPlan"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/plans/{id}/amend": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** A new version of the plan's steps; the protection in place stays until it is accepted */
+    post: operations["amendRiskPlan"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/plans/{id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Pause the plan's MFX-held steps; broker-held protection stays */
+    post: operations["pauseRiskPlan"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/plans/{id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume the plan's MFX-held steps */
+    post: operations["resumeRiskPlan"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/challenges": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The tenant's challenges, each with its counts in progress, passed, failed and ended */
+    get: operations["listRiskChallenges"];
+    put?: never;
+    /** A challenge and its first rule set version */
+    post: operations["createRiskChallenge"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/challenges/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /** A challenge, its current rule set and its counts */
+    get: operations["getRiskChallenge"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/challenges/{id}/versions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** A new rule set version, for accounts enrolled after it; an account already running keeps its version */
+    post: operations["createRiskChallengeVersion"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/challenges/{id}/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /** The challenge's accounts and their results; this list, paged, is the export */
+    get: operations["listRiskChallengeAccounts"];
+    put?: never;
+    /** Enrol accounts in the challenge's current version; each account's outcome separately */
+    post: operations["enrolRiskChallengeAccounts"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/challenges/{id}/accounts/{terminal_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+        terminal_id: string;
+      };
+      cookie?: never;
+    };
+    /** One enrolled account, its result and its period statistics */
+    get: operations["getRiskChallengeAccount"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/activity": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Every warning, breach, action and its outcome, policy and plan change, unresolved first, with evidence */
+    get: operations["listRiskActivity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/leaders": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Your leaders, newest first, with a count of each state
+     * @description `state`, `source` and `account_id` narrow the list in the query, before the page is cut. The stats row counts the leaders the filters match, on every page.
+     */
+    get: operations["listCopyLeaders"];
+    put?: never;
+    /**
+     * Make one of your accounts, or an external signal source, a leader
+     * @description An account leads once: a second live leader on the same account is 409 `conflict` with `details.reason = account_already_leads` and `details.leader_id`. A leader's account never changes; a leader on another account is another leader. Over the plan's number of leaders is 409 `quota_exceeded` with `details.reason = plan_limit` and `details.limit = copy_leaders`. An account that is not yours, or is retired, is 422 `unprocessable` with `details.reason = account_not_usable`.
+     */
+    post: operations["createCopyLeader"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/leaders/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * One leader; another tenant's id is 404
+     * @description The leader with its filters, what is copied, its limits, who may join and how many followers it has
+     */
+    get: operations["getCopyLeader"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Change what a leader's followers receive - its filters, what is copied, the signal lifetime, its limits and who may join
+     * @description Only the fields sent change. The source and the account are not fields here: a leader on another account is another leader. Applies to the next deal; a signal already made keeps what it was made with. A retired leader is 409 `state_error`. Narrowing who may join does not end a follow already made; unfollow it to end it.
+     */
+    patch: operations["updateCopyLeader"];
+    trace?: never;
+  };
+  "/copy/leaders/{id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Stop copying the leader's new entries; its closes and stop changes are still copied
+     * @description While a leader is paused its entries and pending orders are not copied, and each follower's log row says `refused` with reason `paused`. Its closes, partial closes and stop-loss and take-profit changes are still copied, so no follower is left holding a position its leader has closed. An external leader's open signals are refused 409 `state_error`; its close signals are taken. A leader already paused is answered as it is; a retired one is 409 `state_error`.
+     */
+    post: operations["pauseCopyLeader"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/leaders/{id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Copy the leader's entries again, from its next deal
+     * @description Deals made while the leader was paused are not copied afterwards. A leader already active is answered as it is; a retired one is 409 `state_error`.
+     */
+    post: operations["resumeCopyLeader"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/leaders/{id}/retire": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Retire a leader; every follow of it ends, and its copied positions are closed only if you ask
+     * @description Every follower of the leader that has not unfollowed becomes `unfollowed`, each with `copy.state_changed` (`why: leader_retired`). With `close_copied`, each follower's copied volume of this leader is closed, from the copied-position ledger, never the account's own positions; without it the copied positions stay open and are the account's own from then on. Retired is final: the account may lead again as a new leader. A leader already retired is answered as it is.
+     */
+    post: operations["retireCopyLeader"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/leaders/{id}/signals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * An external leader's signal - an open, or the close of an earlier open - copied to its followers
+     * @description Only for a leader whose source is `external`; any other is 409 `state_error` with `details.reason = leader_not_external`. The request is signed as every call is, and that signature is what authorises the signal: MFX Hub signs the copy signal once it is accepted.
+     *     **Idempotent by your `id`.** An `id` this leader has sent before is answered with the original signal and `duplicate: true`, whatever the `Idempotency-Key`; the same `id` with a different body is 409 `conflict` with `details.reason = signal_id_reused`. Nothing is copied twice.
+     *     **Two forms.** An open names `symbol`, `side` and `volume` (or `units`), with `sl` and `tp` when you have them; it is a market entry. A close names the `id` of the open it closes, in `close`, and closes all of what each follower copied from it; a close for an open this leader never sent is 422 `unprocessable` with `details.reason = unknown_open`. Every price and volume is a decimal string.
+     *     **Time is MFX Hub's.** The signal's lifetime (the leader's `signal_lifetime_s`) runs from when MFX Hub accepts it, in UTC; your `time` is kept beside it as the source's own and is never used for the lifetime or the order.
+     *     **The symbol.** `symbol` is your name for the instrument; give `instrument_key` (for example `fx:EURUSD`, `index:US30`) where you know it, and each follower's symbol is found from it by the mapping rule. A `volume` is in lots of the instrument's standard contract in MFX Hub's catalogue; a symbol with no contract size there is 422 `unprocessable` with `details.reason = no_contract_size`, and `units` (base units) may be sent instead.
+     *     A paused leader's opens are 409 `state_error`; its closes are taken. Over the plan's signals a day is 409 `quota_exceeded` with `details.reason = plan_limit` and `details.limit = copy_signals_per_day`; nothing is copied. What became of each follower's copy is on the copy log and in `copy.copied` and `copy.refused`.
+     */
+    post: operations["sendCopySignal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/followers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Your followers, newest first, with a count of each state
+     * @description `state`, `leader_id`, `account_id` and `group_id` narrow the list in the query, before the page is cut. The stats row counts the followers the filters match, on every page.
+     */
+    get: operations["listCopyFollowers"];
+    put?: never;
+    /**
+     * Make one of your accounts follow a leader, with its own scaling, bounds, symbol map, options and limits
+     * @description The follow is checked once, here, against the account's venue, never on a signal: an option the account's venue cannot honour (copying pending orders on a venue without them, for example) is 422 `unprocessable` with `details.reason = not_on_this_venue` and `details.options` naming each one. The leader's own account cannot follow it: 422 `unprocessable` with `details.reason = follows_itself`. An account follows a leader once: a second follow while the first has not unfollowed is 409 `conflict` with `details.reason = already_following` and `details.follower_id`. A leader that is retired is 409 `state_error`; an account the leader's `who_may_join` does not admit is 422 `unprocessable` with `details.reason = not_admitted`. A ratio mode (`balance_ratio`, `equity_ratio`) needs the leader's account figures, so it cannot follow an external leader: 422 `unprocessable` with `details.reason = needs_leader_account`. Over the plan's number of followers is 409 `quota_exceeded` with `details.reason = plan_limit` and `details.limit = copy_followers`.
+     *     With `group_id`, the group's template fills every field this request leaves out; the follower holds its own copy from then on. Risk limits are in the follower account's own currency. The answer's `mandate_version` is 1; every change makes a new version.
+     */
+    post: operations["createCopyFollower"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/followers/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * What a follow would do before it is made - each leader symbol's follower symbol, how it was matched, and what a leader volume becomes
+     * @description Read-only: nothing is created and no Idempotency-Key is needed. The mandate is checked and compiled exactly as a follow would be, against the follower account's own symbols and figures now: for each row, the follower symbol, how it was found (`own_map`, `instrument_key`, `same_name` or `automatic`), and the follower's volume for the leader volume given, rounded down to the follower symbol's step; or the reason it would be refused (`mapping`, `min_volume`, `no_stop`, `no_conversion`). A follow the venue cannot honour is answered here too, in `refusal`, with the same reason a follow would get. The figures are the accounts' at `inputs.read_at` and change as they do.
+     */
+    post: operations["previewCopyFollower"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/followers/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * One follower, its mandate and its active stop-outs; another tenant's id is 404
+     * @description The follower's mandate as it now is, with its version, its state and the stop-outs in force
+     */
+    get: operations["getCopyFollower"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Change a follower's scaling, bounds, symbol map, options, limits or close on stop-out; each change is a new mandate version
+     * @description Only the fields sent change, and the follower's account and leader are not among them. The change is checked as a follow is (`not_on_this_venue`, `needs_leader_account`) and, once accepted, is a new `mandate_version` sent to the account's copy host; a signal is copied under the version the host holds when it arrives. An unfollowed follower is 409 `state_error`. Group membership changes through the group's routes.
+     */
+    patch: operations["updateCopyFollower"];
+    trace?: never;
+  };
+  "/copy/followers/{id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Stop copying new entries to this follower; closes of what it copied still are
+     * @description As a leader's pause, for one follower: entries are logged `refused` with reason `paused`, closes, partial closes and stop changes of what it copied are still copied. `copy.state_changed` is sent. A follower already paused is answered as it is; an unfollowed one is 409 `state_error`.
+     */
+    post: operations["pauseCopyFollower"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/followers/{id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Copy to this follower again from the leader's next deal; stopped_out while a stop-out is still active
+     * @description A paused follower returns to `copying`, or to `stopped_out` while one of its stop-outs is still active (reset it to copy again). A follower already copying is answered as it is; an unfollowed one is 409 `state_error`.
+     */
+    post: operations["resumeCopyFollower"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/followers/{id}/resync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Send the follower's mandate to its account's copy host again and heal its copied positions from the account
+     * @description What the platform does by itself on every account snapshot, asked for now: the current mandate is sent again, and the copied-position ledger is compared with the account's positions; a copied position the venue no longer holds is closed in the ledger with its reason. Drift found is sent as `copy.drift`. Nothing is traded. An unfollowed follower is 409 `state_error`.
+     */
+    post: operations["resyncCopyFollower"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/followers/{id}/unfollow": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * End the follow; close what it copied only if you ask
+     * @description The follower becomes `unfollowed`, which is final: the account may follow the leader again as a new follower. With `close_copied`, the volume copied from this leader is closed, from the copied-position ledger, never the account's own positions; on a netting account the close is of the copied volume only. Without it the copied positions stay open and are the account's own from then on. An unfollowed follower is answered as it is.
+     */
+    post: operations["unfollowCopyLeader"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/followers/{id}/stopouts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * A follower's stop-outs, newest first
+     * @description Each stop-out with the limit reached, what was used, its period, the copied volume it closed and, once reset, who reset it and why
+     */
+    get: operations["listCopyStopouts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/followers/{id}/stopouts/reset": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Reset a follower's active stop-outs before their period ends, with a reason
+     * @description Every active stop-out of the follower, or only the one for `limit`, becomes `reset`, with who reset it, when and why. The follower returns to `copying` once none is active, unless it is paused. Positions a stop-out closed stay closed. No active stop-out to reset is 409 `state_error` with `details.reason = no_active_stopout`.
+     */
+    post: operations["resetCopyStopouts"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/log": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * What became of each copy - one row a follower a signal, with its outcome, reason and stage timings
+     * @description Newest first unless `sort` says otherwise. Every filter narrows the rows in the query, before the page is cut, and the stats row is over the same rows: the whole filtered window, on every page. The window is `from` to `to`, at most 31 days (422 `window_too_wide`); without `from` it is the last 24 hours. Rows older than the plan's log retention are gone and are not returned. Times are milliseconds; MFX Hub's part of a copy (`mfx_ms`) is reported apart from the venue's (`broker_ms`).
+     */
+    get: operations["listCopyLog"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/groups": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Your copy groups (Enterprise), newest first
+     * @description `state` narrows the list in the query. The stats row counts the groups the filter matches, on every page
+     */
+    get: operations["listCopyGroups"];
+    put?: never;
+    /**
+     * A group of followers managed together under one template and one exposure cap (Enterprise)
+     * @description Followers join with `group_id` on create, or through the group's followers route. A tenant whose plan is not Enterprise is 403 `feature_not_entitled` with `details.part = groups`
+     */
+    post: operations["createCopyGroup"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/groups/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * One group
+     * @description The group with its template, exposure cap, placement policy and how many followers it has; another tenant's id is 404
+     */
+    get: operations["getCopyGroup"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Change a group's name, template, exposure cap or placement policy
+     * @description Only the fields sent change. A new template applies to followers created into the group afterwards; a member follower keeps its own mandate until it is changed itself.
+     */
+    patch: operations["updateCopyGroup"];
+    trace?: never;
+  };
+  "/copy/groups/{id}/followers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add followers to the group; each follower's outcome is answered separately
+     * @description A follower belongs to at most one group: one in another group is refused with `in_another_group`. Adding a follower does not change its mandate. List a group's followers with `GET /copy/followers?group_id=`.
+     */
+    post: operations["addCopyGroupFollowers"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/groups/{id}/followers/remove": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Take followers out of the group; they keep following with their own mandates
+     * @description A follower not in this group is answered unchanged. Its mandate and state are not changed; the group's exposure cap and pause no longer apply to it
+     */
+    post: operations["removeCopyGroupFollowers"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/groups/{id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Stop copying new entries to every follower of the group at once; closes still are
+     * @description While the group is paused its followers' entries are logged `refused` with reason `paused`; closes, partial closes and stop changes of what they copied are still copied. Each follower keeps its own state, so resuming the group restores each one as it was. A group already paused is answered as it is.
+     */
+    post: operations["pauseCopyGroup"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/groups/{id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Copy to the group's followers again, from the leader's next deal
+     * @description Each follower returns to what its own state allows; deals made while the group was paused are not copied afterwards. A group already active is answered as it is
+     */
+    post: operations["resumeCopyGroup"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/stream": {
     parameters: {
       query?: never;
@@ -1048,7 +2149,7 @@ export interface paths {
     };
     /**
      * WebSocket upgrade (wss://ws.mfxhub.com/v1/stream; dev wss://ws.dev.mfxhub.com/v1/stream) — Ed25519 signature at upgrade (mfxSignature); channels md · candles · events · results · account · ea · book; 24 h max lifetime; drop-oldest ticks per slow client
-     * @description Control messages are JSON: `StreamClientMessage` in, `StreamServerMessage` out. Channels are keyed by id (`StreamChannel`). Results and events carry a per-channel `seq` and are replayed on `resume` for up to 15 minutes; ticks and candles are not replayed. Account state travels on the terminal's own `account:{terminal_id}` channel, not on `events`: `account.snapshot` on every subscribe and resume (a snapshot, never a replay), when the position set changes and every 60 s, and `account.marks` in between. Account messages are samples: a slow client loses them before any event, and a `seq` gap means resume. `position.*`, `order.*` and `account.profile_changed` stay on `events`; fills stay on `results:{terminal_id}`. Market depth travels on `book:{server_id}:{symbol}` as `md.book`: the newest book on subscribe, then each change. While a planned maintenance window suspends the tenant's market data, its `md:`, `candles:` and `book:` channels carry an `md.status` of `maintenance` and no data, then `live` when it ends (`MdStatusMessage`). The upgrade request is signed as any call is (`mfxSignature`, Ed25519): over `GET`, the path with its query and an empty body. Each event's `data` is described by the schema `x-event-payloads` names for its type; on `events` it also carries the `type`. Close codes are listed in `x-close-codes`.
+     * @description Control messages are JSON: `StreamClientMessage` in, `StreamServerMessage` out. Channels are keyed by id (`StreamChannel`). Results and events carry a per-channel `seq` and are replayed on `resume` for up to 15 minutes; ticks and candles are not replayed. Account state travels on the terminal's own `account:{terminal_id}` channel, not on `events`: `account.snapshot` on every subscribe and resume (a snapshot, never a replay, and only a whole one: none is sent while the platform's copy lists fewer positions than the account's count), when the position set changes and every 60 s, and `account.marks` in between. Account messages are samples: a slow client loses them before any event, and a `seq` gap means resume. `position.*`, `order.*` and `account.profile_changed` stay on `events`; fills stay on `results:{terminal_id}`. Market depth travels on `book:{server_id}:{symbol}` as `md.book`: the newest book on subscribe, then each change. While a planned maintenance window suspends the tenant's market data, its `md:`, `candles:` and `book:` channels carry an `md.status` of `maintenance` and no data, then `live` when it ends (`MdStatusMessage`). The upgrade request is signed as any call is (`mfxSignature`, Ed25519): over `GET`, the path with its query and an empty body. Each event's `data` is described by the schema `x-event-payloads` names for its type; on `events` it also carries the `type`. Close codes are listed in `x-close-codes`.
      */
     get: operations["openStream"];
     put?: never;
@@ -1217,6 +2318,14 @@ export interface components {
       /** @description slug or code */
       label: string;
     };
+    /** @description An observation with its age. `seconds` is null when the observation is missing — which reads as UNKNOWN, never as zero and never as fresh (L14, L36, L43, guardrail 15). */
+    Age: {
+      /** Format: date-time */
+      at: string | null;
+      seconds: number | null;
+      /** @description The observation is older than its metric's freshness bound, so it is unknown. For a cell's heartbeat the bound is the heartbeat's red line (`vitals.heartbeat_age_s.red`): the list, the Overview and the tile turn at the moment the SLA says down. */
+      stale?: boolean;
+    };
     /**
      * @description Tri-state on purpose. `unknown` is what an unreachable agent produces, and collapsing it into `failed` invents an outage while collapsing it into `ok` hides one.
      * @enum {string}
@@ -1226,8 +2335,8 @@ export interface components {
       /** @description Why; written to the audit log and sent to the cell */
       reason: string;
       /**
-       * @description When the ask is valid and refused only because the platform is busy (rule 2 cooldown, 4 tenant rate, 5 tenant concurrency, 6 farm capacity), hold it and start it when it can, instead of answering 429. The answer is then 202 with `state: QUEUED` and where it waits. Without it the 429 stays, as before. A hold that could not end before the queue's deadline is refused at once either way
-       * @default false
+       * @description When the ask is valid and refused only because the platform is busy (rule 2 cooldown, 4 tenant rate, 5 tenant concurrency, 6 farm capacity), hold it and start it when it can, instead of answering 429. The answer is then 202 with `state: QUEUED` and where it waits. A valid ask always enters the queue unless you send `false`, which keeps the 429 (orchestrator: requests enter the queue at once). A hold that could not end before the queue's deadline is refused at once either way
+       * @default true
        */
       queue: boolean;
       /**
@@ -1270,17 +2379,98 @@ export interface components {
       /** @description True when this Idempotency-Key was seen before, or when the terminal already had the same kind of operation waiting (a stronger kind replaces a waiting one, as described on restartTerminal); the original operation is returned */
       duplicate?: boolean;
     };
+    /** @description Which of your terminals a bulk restart or retire takes, and why. At least one of the filters; given together they narrow each other */
+    BulkTerminalAsk: {
+      /** @description Why; written to the audit log and to each item */
+      reason: string;
+      /**
+       * Format: uuid
+       * @description Every terminal of yours on this farm
+       */
+      farm_id?: string | null;
+      /**
+       * Format: uuid
+       * @description Every terminal of yours on this broker
+       */
+      broker_id?: string | null;
+      /** @description These terminals */
+      terminal_ids?: string[] | null;
+      /**
+       * @description Rule 3, as on TerminalRestart, for every terminal taken: without it a terminal with open positions is refused (`refused[].code = positions_open`) and the rest are taken
+       * @default false
+       */
+      confirm_open_positions: boolean;
+    };
+    BulkActionRefusal: {
+      /** Format: uuid */
+      terminal_id: string;
+      /** @description The governed-operation rule that refused it, as the single route answers it (e.g. positions_open, operation_in_progress, superseded_by_waiting, farm_frozen) */
+      code: string;
+    };
+    /** @description A bulk restart, retire or swap: judged once, answered at once, and carried out at the pace of the cells it touches. Each accepted terminal is one ordinary operation with `bulk_action_id` set, in its cell's line; a refused one is listed in `refused` and never queued. Its items never expire: each waits for its cell or is cancelled. Cancel settles every item still QUEUED as CANCELLED and lets running ones finish; the line is never reordered. */
+    BulkAction: {
+      /** Format: uuid */
+      id: string;
+      /**
+       * @description cell_relogin: the platform's own, opened when a cell comes back from a restart and logs its terminals in again
+       * @enum {string}
+       */
+      kind: "restart" | "retire" | "swap" | "cell_relogin";
+      /**
+       * @description RUNNING while any item waits or runs; DONE when every item succeeded; PARTIAL when every item has ended and some did not succeed; CANCELLED when it was cancelled
+       * @enum {string}
+       */
+      state: "RUNNING" | "DONE" | "CANCELLED" | "PARTIAL";
+      /** @description As on TerminalOperation */
+      requested_by: string;
+      reason: string;
+      /** @description Terminals the filter named */
+      requested_n: number;
+      accepted_n: number;
+      refused_n: number;
+      refused: components["schemas"]["BulkActionRefusal"][];
+      counts: {
+        queued: number;
+        running: number;
+        succeeded: number;
+        /** @description Ended without succeeding: FAILED, NOT_STARTED */
+        failed: number;
+        cancelled: number;
+      };
+      /**
+       * Format: date-time
+       * @description When the last item is expected to end, at each cell's load now and the measured time an item takes: an expectation, not a promise. Null once it has ended, or when a cell it waits on has no plan
+       */
+      expected_finish_at: string | null;
+      /** @description True once it has run past the slow end of its expectation (the console reads that end as `expected_finish_p95_at`) */
+      late: boolean;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      finished_at: string | null;
+    };
     /** @description A governed lifecycle operation; done only when the terminal produces ticks again */
     TerminalOperation: {
       /** Format: uuid */
       operation_id: string;
-      /** @enum {string} */
+      /**
+       * @description swap (orchestrator): the terminal moved to its farm's newer image or MetaTrader build, a stop and a cold start on its own cell, at the lowest priority of its cell's line
+       * @enum {string}
+       */
       kind:
-        "restart" | "rebuild" | "move" | "retire" | "retry_login" | "attach" | "detach" | "drain";
+        | "restart"
+        | "rebuild"
+        | "move"
+        | "retire"
+        | "retry_login"
+        | "attach"
+        | "detach"
+        | "drain"
+        | "swap";
       /** Format: uuid */
       terminal_id: string;
       /**
-       * @description QUEUED is a state of the operation, never of the terminal: the terminal's own state and its lifecycle record are untouched while the operation waits. A queued operation ends by starting (ACCEPTED, then as before) or in one of four ways in which nothing ran: NOT_STARTED (its turn came and the guard, run again on the terminal as it was then, refused it; `step` carries the refusal's code), EXPIRED (still waiting at `queue.expires_at`; it is never run late), CANCELLED, or SUPERSEDED (a stronger ask took its place; `superseded_by`).
+       * @description QUEUED is a state of the operation, never of the terminal: the terminal's own state and its lifecycle record are untouched while the operation waits. A queued operation ends by starting (ACCEPTED, then as before) or in one of four ways in which nothing ran: NOT_STARTED (its turn came and the guard, run again on the terminal as it was then, refused it; `step` carries the refusal's code), EXPIRED (still waiting at `queue.expires_at`; it is never run late; an item of a bulk action has no deadline and never expires), CANCELLED, or SUPERSEDED (a stronger ask took its place; `superseded_by`).
        * @enum {string}
        */
       state:
@@ -1302,6 +2492,11 @@ export interface components {
        * @description The operation that replaced this one; set only on SUPERSEDED
        */
       superseded_by?: string | null;
+      /**
+       * Format: uuid
+       * @description The bulk action it is an item of; null for an operation asked on its own
+       */
+      bulk_action_id?: string | null;
       /** @description key:<key id>, admin.<email> for an operator, system.healing for an automatic recovery step, or system.maintenance for a maintenance window's restart */
       requested_by: string;
       reason: string;
@@ -1324,13 +2519,65 @@ export interface components {
       /** Format: date-time */
       finished_at: string | null;
     };
+    /** @description Where a QUEUED terminal waits for its start. Each cell has one line, ordered by what the platform must do first (stops that relieve a busy cell, then recovery, then what was asked, then background work), then by class (streaming, dedicated, shared), then who waited longest. The order is never changed by hand. */
+    TerminalQueue: {
+      /**
+       * Format: date-time
+       * @description When it entered its cell's line
+       */
+      queued_at: string;
+      /** @description Its place in its cell's line: 1 is next. Null when the platform has no current plan for the cell (unknown, never 0) */
+      position: number | null;
+      /**
+       * Format: date-time
+       * @description When the last plan expects its slot, at the cell's load now: an expectation, not a promise. Null when unknown
+       */
+      expected_start_at: string | null;
+      /**
+       * @description Why it waits, a coarse code: `cell_busy` its cell is busy now; `cell_settling` its cell started others a moment ago and lets them settle first; `cell_at_stop_line` its cell is at its limit and starts nothing new until it is lighter; `cell_silent` its cell has not reported for a minute; `broker_budget` the broker's logins a minute are spent; `broker_cap` the broker has as many logins in flight as it takes; `broker_maintenance` the broker is in maintenance; `platform_ceiling` the platform's own limit; `backoff` waiting after a failed attempt; `bulk_pace` a bulk action's items go at the pace of their cells. Never a figure, never the cell. Null when nothing holds it but its place in line
+       * @enum {string|null}
+       */
+      reason:
+        | "cell_busy"
+        | "cell_settling"
+        | "cell_at_stop_line"
+        | "cell_silent"
+        | "broker_budget"
+        | "broker_cap"
+        | "broker_maintenance"
+        | "platform_ceiling"
+        | "backoff"
+        | "bulk_pace"
+        | null;
+    };
     /** @description Where a QUEUED operation waits. It waits in a line, behind other operations, or on a clock. Order in a line is class first (automatic recovery, then operator, then tenant), then who asked first. */
     OperationQueue: {
       /**
-       * @description The rule that holds it. farm_capacity (rule 6) and tenant_concurrency (rule 5) are lines: it starts when one of the farm's, or the tenant's, operations settles. cooldown (rule 2) and tenant_rate (rule 4) are clocks: it starts at `starts_after`
+       * @description The rule that holds it. farm_capacity (rule 6) and tenant_concurrency (rule 5) are lines: it starts when one of the farm's, or the tenant's, operations settles. cooldown (rule 2) and tenant_rate (rule 4) are clocks: it starts at `starts_after`. cell_slots is its cell's line: it starts when the cell, paced by its own load, has a slot for it
        * @enum {string}
        */
-      held_by: "farm_capacity" | "tenant_concurrency" | "cooldown" | "tenant_rate";
+      held_by: "farm_capacity" | "tenant_concurrency" | "cooldown" | "tenant_rate" | "cell_slots";
+      /**
+       * Format: date-time
+       * @description Held by cell_slots: when the cell's last plan expects its slot, an expectation and not a promise. Null for any other hold, and when unknown
+       */
+      expected_start_at: string | null;
+      /**
+       * @description Held by cell_slots: Why it waits, a coarse code: `cell_busy` its cell is busy now; `cell_settling` its cell started others a moment ago and lets them settle first; `cell_at_stop_line` its cell is at its limit and starts nothing new until it is lighter; `cell_silent` its cell has not reported for a minute; `broker_budget` the broker's logins a minute are spent; `broker_cap` the broker has as many logins in flight as it takes; `broker_maintenance` the broker is in maintenance; `platform_ceiling` the platform's own limit; `backoff` waiting after a failed attempt; `bulk_pace` a bulk action's items go at the pace of their cells. Never a figure, never the cell. Null for any other hold
+       * @enum {string|null}
+       */
+      reason:
+        | "cell_busy"
+        | "cell_settling"
+        | "cell_at_stop_line"
+        | "cell_silent"
+        | "broker_budget"
+        | "broker_cap"
+        | "broker_maintenance"
+        | "platform_ceiling"
+        | "backoff"
+        | "bulk_pace"
+        | null;
       /**
        * @description Whose ask it is; it sets the order in a line
        * @enum {string}
@@ -1347,14 +2594,19 @@ export interface components {
       queued_at: string;
       /**
        * Format: date-time
-       * @description Not started by then, it settles EXPIRED and is never run late. queued_at plus the longest wait, 900 s unless an operator has changed it
+       * @description Not started by then, it settles EXPIRED and is never run late. queued_at plus the longest wait, 900 s unless an operator has changed it. Null for an item of a bulk action, which never expires: it waits for its cell or is cancelled
        */
-      expires_at: string;
+      expires_at: string | null;
+      /**
+       * Format: uuid
+       * @description The bulk action it is an item of; null for an operation asked on its own
+       */
+      bulk_action_id?: string | null;
     };
     TerminalCreate: {
       /**
        * Format: uuid
-       * @description Optional. Omitted, the platform chooses: your own ACTIVE farms first, then shared ones (GET /farms lists both), offering the usages this terminal needs, in the server's region, with room; the oldest wins a tie. The choice is on the answer as `farm`. None fits is 409 no_farm
+       * @description The farm the terminal goes to. Required for a tenant with its own farms (enterprise and system plans): omitted, it is 422 farm_required listing them. Optional for a standard tenant: omitted, the platform chooses among the shared farms (GET /farms lists them) offering the usages this terminal needs, with room; the oldest wins a tie. The choice is on the answer as `farm`. None fits is 409 no_farm
        */
       farm_id?: string;
       /** Format: uuid */
@@ -1449,11 +2701,12 @@ export interface components {
       streaming: boolean;
       execution: boolean;
       /**
-       * @description As `Terminal.state`. OFFLINE: its cell cannot run it (`offline_reason` says why); it comes back by itself, or is moved after 15 minutes. DRAINED: you drained it; stopped and not billed, keeping its id, account and settings until you resume or retire it. PARKED: your account is suspended and its grace period ended; the terminal is stopped and keeps its settings, its place and its login. It returns to LOGGING_IN by itself when your account is reinstated, or goes to DRAINING when it is retired.
+       * @description As `Terminal.state`. OFFLINE: its cell cannot run it (`offline_reason` says why); it comes back by itself, or is moved after 15 minutes. DRAINED: you drained it; stopped and not billed, keeping its id, account and settings until you resume or retire it. PARKED: your account is suspended and its grace period ended; the terminal is stopped and keeps its settings, its place and its login. It returns to LOGGING_IN by itself when your account is reinstated, or goes to DRAINING when it is retired. QUEUED: placed on a cell and waiting for its turn to start. A cell starts terminals a few at a time so that the ones already running are not slowed; `queue` says your place, when it is expected to start and why it waits. It is not trading yet; it starts by itself.
        * @enum {string}
        */
       state:
         | "REQUESTED"
+        | "QUEUED"
         | "PROVISIONING"
         | "LOGGING_IN"
         | "ACTIVE"
@@ -1468,6 +2721,8 @@ export interface components {
        * @enum {string|null}
        */
       offline_reason?: "power_off" | "vm_missing" | "no_heartbeat" | null;
+      /** @description Where a QUEUED terminal waits for its start: your place, when it is expected to start and why it waits. Null in every other state */
+      queue?: components["schemas"]["TerminalQueue"] | null;
       /**
        * Format: date-time
        * @description When it entered this state (its creation when it has not moved)
@@ -1526,6 +2781,65 @@ export interface components {
       /** @description How many items are in THIS page; never a total */
       returned?: number;
       items: components["schemas"]["TenantTerminal"][];
+    };
+    /** @description One trading account at one venue. Its state is its runner's, in words that hold on every venue. An MT5 account's id is the id of the terminal you created for it; with HA, both terminals run the one account and `runners` names them. */
+    TradingAccount: {
+      /** Format: uuid */
+      id: string;
+      /**
+       * @description The trading technology. cTrader accounts appear from the cTrader release
+       * @enum {string}
+       */
+      venue: "mt5" | "ctrader";
+      /**
+       * @description live or demo. MT5: from the account's own type once the terminal has logged in (contest is demo); null until then
+       * @enum {string|null}
+       */
+      environment: "live" | "demo" | null;
+      /** @description Your own name for the account; null when none is set */
+      label: string | null;
+      /**
+       * @description PENDING: being placed. CONNECTING: logging in. CONNECTED: logged in, nothing failing. DEGRADED: logged in with a condition failing, or its runner cannot run it for now (it comes back by itself). PAUSED: drained by you, or stopped while your account is suspended. REAUTH_NEEDED: the broker refused the login as an invalid account; submit the credential again. RETIRED, FAILED: as the terminal's. For MT5 it is the writing terminal's state (`GET /terminals/{id}` has the detail)
+       * @enum {string}
+       */
+      state:
+        | "PENDING"
+        | "CONNECTING"
+        | "CONNECTED"
+        | "DEGRADED"
+        | "PAUSED"
+        | "REAUTH_NEEDED"
+        | "RETIRED"
+        | "FAILED";
+      broker: {
+        /**
+         * Format: uuid
+         * @description MT5: the broker's id in GET /brokers; null for a venue whose brokers are not MFX broker rows
+         */
+        id: string | null;
+        name: string;
+      };
+      /** @description e.g. ****3456; null until a credential is submitted */
+      login_masked: string | null;
+      /** @description MT5: the terminals that run the account, yours to read at /terminals/{id}; empty for a venue MFX runs without a terminal of yours */
+      runners: {
+        /** Format: uuid */
+        terminal_id: string;
+        /**
+         * @description With HA, which terminal places orders; null without HA
+         * @enum {string|null}
+         */
+        role: "writer" | "standby" | null;
+      }[];
+      /** Format: date-time */
+      created_at: string;
+    };
+    TradingAccountPage: {
+      /** @description Opaque (created_at, id) cursor for the following page; null on the last page */
+      next_cursor: string | null;
+      /** @description How many items are in THIS page; never a total */
+      returned?: number;
+      items: components["schemas"]["TradingAccount"][];
     };
     /** @description The answer to an accepted command: `{command_id, state, duplicate}` */
     CommandAccepted: {
@@ -2098,6 +3412,7 @@ export interface components {
        */
       from:
         | "REQUESTED"
+        | "QUEUED"
         | "PROVISIONING"
         | "LOGGING_IN"
         | "ACTIVE"
@@ -2113,6 +3428,7 @@ export interface components {
        */
       to:
         | "REQUESTED"
+        | "QUEUED"
         | "PROVISIONING"
         | "LOGGING_IN"
         | "ACTIVE"
@@ -2168,7 +3484,7 @@ export interface components {
        * @enum {string}
        */
       attributed_to: "broker" | "";
-      /** @description As `Condition.broker_words`; empty unless the reason is `login_refused` */
+      /** @description As `Condition.broker_words`: the broker's own words, at most 120 characters; empty unless the reason is `login_refused` */
       broker_words?: string;
       /**
        * @description As `Condition.refusal_kind`; empty unless the reason is `login_refused`
@@ -2197,9 +3513,20 @@ export interface components {
       operation_id: string;
       /** Format: uuid */
       terminal_id: string;
-      /** @enum {string} */
+      /**
+       * @description swap (orchestrator): the terminal moved to its farm's newer image or MetaTrader build, a stop and a cold start on its own cell, at the lowest priority of its cell's line
+       * @enum {string}
+       */
       kind:
-        "restart" | "rebuild" | "move" | "retire" | "retry_login" | "attach" | "detach" | "drain";
+        | "restart"
+        | "rebuild"
+        | "move"
+        | "retire"
+        | "retry_login"
+        | "attach"
+        | "detach"
+        | "drain"
+        | "swap";
       /**
        * @description As `TerminalOperation.state`
        * @enum {string}
@@ -3139,6 +4466,8 @@ export interface components {
         failure_days: number;
         in_flight_per_endpoint: number;
       };
+      /** @description Copy Trading's limits; absent when your plan does not include Copy Trading */
+      copy?: components["schemas"]["CopyUsage"];
       /** Format: date-time */
       as_of: string;
     };
@@ -3530,9 +4859,9 @@ export interface components {
         | "came_back"
         | "description"
         | "identity";
-      /** @description The spec before (digits, contract_size, volume_min, volume_step, volume_max, trade_mode, margin_currency, pip_value_per_lot, trade_sessions, description), decimals as strings */
+      /** @description The symbol before (digits, contract_size, volume_min, volume_step, volume_max, trade_mode, margin_currency, pip_value_per_lot, trade_sessions, description, the broker facts and the identity fields), decimals as strings. By change: added, null; came_back, as last stored before it vanished; spec, trading, sessions, description and identity, as stored before the report; removed, as last stored */
       before: Record<string, never> | null;
-      /** @description The spec after, same shape; null for a removal */
+      /** @description The symbol after, same shape, as the report left it; null for a removal */
       after: Record<string, never> | null;
       /**
        * Format: date-time
@@ -4173,6 +5502,1636 @@ export interface components {
       /** @description The seven, as judged */
       figures: components["schemas"]["EaTrialFigure"][];
     };
+    /** @description A limit as money in the account currency, or as a percentage of the rule's reference; exactly one */
+    RiskAmount: {
+      amount?: string;
+      pct?: string;
+    };
+    /**
+     * @description An action a rule may take, each authorised separately. close_positions needs close_scope
+     * @enum {string}
+     */
+    RiskActionKind: "notify" | "block_entries" | "cancel_pending" | "close_positions";
+    RiskActions: {
+      kinds: components["schemas"]["RiskActionKind"][];
+      /**
+       * @description Which pending orders cancel_pending reaches
+       * @enum {string}
+       */
+      cancel_scope?: "mfx_pending" | "all_pending";
+      /**
+       * @description Which positions close_positions reaches; previewed before the version is saved
+       * @enum {string}
+       */
+      close_scope?: "mfx_positions" | "all_positions";
+    };
+    RiskDailyLoss: {
+      limit: components["schemas"]["RiskAmount"];
+      /** @enum {string} */
+      basis: "start_balance" | "start_equity" | "higher_of_both";
+      warn_at: components["schemas"]["RiskAmount"];
+      act_at: components["schemas"]["RiskAmount"];
+      /** @description Refuse an entry whose loss at its stop would take the day past act_at (risk_daily_loss) */
+      check_entries: boolean;
+      actions: components["schemas"]["RiskActions"];
+    };
+    RiskDrawdown: {
+      /** @enum {string} */
+      kind: "static" | "trailing";
+      limit: components["schemas"]["RiskAmount"];
+      /** @description The reference: the balance at activation, or a stated account size */
+      initial: string;
+      /**
+       * @description trailing only
+       * @enum {string}
+       */
+      peak_basis?: "equity" | "balance";
+      /**
+       * @description trailing only: every read, or at each reset
+       * @enum {string}
+       */
+      peak_when?: "intraday" | "end_of_day";
+      warn_at: components["schemas"]["RiskAmount"];
+      act_at: components["schemas"]["RiskAmount"];
+      actions: components["schemas"]["RiskActions"];
+    };
+    RiskExposure: {
+      gross_limit?: string;
+      per_symbol_limit?: string;
+      include_pending?: boolean;
+      max_positions?: number;
+      max_pending?: number;
+    };
+    RiskLossAtStops: {
+      limit: components["schemas"]["RiskAmount"];
+      /** @enum {string} */
+      no_stop: "refuse" | "count_notional";
+    };
+    RiskSchedule: {
+      /** @enum {string} */
+      mode: "allowed" | "blocked";
+      /** @description An IANA time zone, or broker for the broker's clock */
+      zone: string;
+      windows: {
+        days: ("mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun")[];
+        from: string;
+        to: string;
+      }[];
+    };
+    /** @description A template the tenant confirmed: it filled the rules and adds its own labelled rules. Updating a template never changes an active version */
+    RiskProfile: {
+      name: string;
+      version: string;
+      /** Format: date-time */
+      confirmed_at: string;
+      profit_target?: components["schemas"]["RiskAmount"];
+      min_trading_days?: number;
+      /** @description The tenant's own words; shown, not evaluated */
+      consistency?: string | null;
+      on_target?: components["schemas"]["RiskActions"];
+    };
+    /** @description Every rule is optional; a rule present is evaluated. Nothing has a default the platform chose */
+    RiskRules: {
+      daily_loss?: components["schemas"]["RiskDailyLoss"];
+      drawdown?: components["schemas"]["RiskDrawdown"];
+      exposure?: components["schemas"]["RiskExposure"];
+      loss_at_stops?: components["schemas"]["RiskLossAtStops"];
+      schedule?: components["schemas"]["RiskSchedule"];
+      profile?: components["schemas"]["RiskProfile"];
+    };
+    RiskReset: {
+      /** @description broker (midnight on the broker's clock) or an IANA zone with its daylight saving */
+      zone: string;
+    };
+    RiskPolicyCreate: {
+      name: string;
+      rules: components["schemas"]["RiskRules"];
+      reset: components["schemas"]["RiskReset"];
+    };
+    RiskPolicyVersionCreate: {
+      rules: components["schemas"]["RiskRules"];
+      reset: components["schemas"]["RiskReset"];
+      reason?: string | null;
+    };
+    RiskPolicyVersion: {
+      /** Format: uuid */
+      policy_id: string;
+      version: number;
+      rules: components["schemas"]["RiskRules"];
+      reset: components["schemas"]["RiskReset"];
+      /** @description Against the version before it: a limit rose, an action was removed, or a window widened */
+      relaxes: boolean;
+      changes: {
+        path: string;
+        from: unknown;
+        to: unknown;
+      }[];
+      /** Format: date-time */
+      created_at: string;
+      reason: string | null;
+    };
+    RiskPolicyVersionPage: {
+      items: components["schemas"]["RiskPolicyVersion"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    RiskPolicy: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /** @enum {string} */
+      state: "active" | "archived";
+      current_version: components["schemas"]["RiskPolicyVersion"];
+      accounts: {
+        /** Format: uuid */
+        terminal_id: string;
+        version: number;
+        /** @enum {string} */
+        state: "active" | "paused";
+      }[];
+      /** Format: date-time */
+      created_at: string;
+    };
+    RiskPolicyPage: {
+      items: components["schemas"]["RiskPolicy"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    RiskActivate: {
+      terminal_ids: string[];
+      version: number;
+      /** @description Needed for an account where the version relaxes the one in force */
+      reason?: string | null;
+    };
+    RiskActivationResult: {
+      results: {
+        /** Format: uuid */
+        terminal_id: string;
+        /** @enum {string} */
+        outcome: "done" | "unchanged" | "refused";
+        /** @description Why it was refused, as an error code: risk_override_required, not_found, quota_exceeded */
+        reason: string | null;
+      }[];
+    };
+    RiskReason: {
+      reason: string;
+    };
+    RiskClear: {
+      /** @enum {string} */
+      rule: "daily_loss" | "drawdown" | "restriction";
+      reason: string;
+    };
+    RiskCoverageKind: {
+      /** @enum {string} */
+      state: "healthy" | "degraded" | "disconnected" | "unknown";
+      /** @description Why it is not healthy, in words the tenant can act on */
+      reason: string | null;
+      /** Format: date-time */
+      since: string | null;
+    };
+    /** @description Per kind. A green terminal is not full coverage */
+    RiskCoverage: {
+      monitoring: components["schemas"]["RiskCoverageKind"];
+      pre_trade: components["schemas"]["RiskCoverageKind"];
+      broker_held: components["schemas"]["RiskCoverageKind"];
+      managed_actions: components["schemas"]["RiskCoverageKind"];
+      /**
+       * @description Which reads the rules are evaluated on: the cell's monitor, or the platform's copy of the account reads
+       * @enum {string|null}
+       */
+      detector: "cell" | "ingest" | null;
+    };
+    RiskDailyLossFigure: {
+      used: string | null;
+      limit: string | null;
+      warn_at: string | null;
+      act_at: string | null;
+      reference: string | null;
+      /** @enum {string} */
+      basis: "start_balance" | "start_equity" | "higher_of_both";
+      /** Format: date-time */
+      day_start_at: string | null;
+      /** Format: date-time */
+      next_reset_at: string | null;
+      /** @description The day's first read came after the reset's late line; start_balance was rebuilt from deal history */
+      late: boolean;
+    };
+    RiskDrawdownFigure: {
+      used: string | null;
+      limit: string | null;
+      warn_at: string | null;
+      act_at: string | null;
+      /** @enum {string} */
+      kind: "static" | "trailing";
+      peak: string | null;
+      /** Format: date-time */
+      peak_at: string | null;
+      initial: string;
+    };
+    RiskAccount: {
+      /** Format: uuid */
+      terminal_id: string;
+      policy: {
+        /** Format: uuid */
+        id: string;
+        version: number;
+      } | null;
+      /** @enum {string} */
+      activation_state: "active" | "paused" | "none";
+      daily_loss: components["schemas"]["RiskDailyLossFigure"] | null;
+      drawdown: components["schemas"]["RiskDrawdownFigure"] | null;
+      exposure: {
+        gross: string | null;
+        gross_limit: string | null;
+        /** @description Held for entries whose outcome is not known yet */
+        reserved: string;
+        by_symbol: {
+          symbol: string;
+          gross: string;
+          limit?: string | null;
+        }[];
+        positions: number;
+        pending: number;
+      };
+      open_breaches: {
+        rule: string;
+        /** Format: date-time */
+        at: string;
+        /** @enum {string} */
+        clears: "at_reset" | "by_override";
+      }[];
+      restriction: {
+        /** @enum {string} */
+        state: "none" | "entries_blocked";
+        rule: string | null;
+        /** Format: date-time */
+        since: string | null;
+      };
+      coverage: components["schemas"]["RiskCoverage"];
+      inputs: {
+        account_read: components["schemas"]["Age"];
+      };
+      challenges: {
+        /** Format: uuid */
+        id: string;
+        name: string;
+        state: string;
+      }[];
+    };
+    RiskAccountPage: {
+      stats: {
+        accounts: number;
+        /** @description Accounts with an active policy or an enrolled challenge */
+        protected: number;
+        restricted: number;
+        degraded: number;
+        actions_today: number;
+        unresolved: number;
+      };
+      items: components["schemas"]["RiskAccount"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    RiskEquitySeries: {
+      /** Format: uuid */
+      terminal_id: string;
+      currency: string | null;
+      points: {
+        /** Format: date-time */
+        at: string;
+        equity: string;
+        balance: string;
+      }[];
+    };
+    RiskCoverageSummary: {
+      /** @description For each kind (monitoring, pre_trade, broker_held, managed_actions), how many accounts are in each state */
+      counts: {
+        [key: string]: {
+          [key: string]: number;
+        };
+      };
+      not_healthy: {
+        /** Format: uuid */
+        terminal_id: string;
+        kind: string;
+        state: string;
+        reason: string | null;
+      }[];
+    };
+    RiskBudget: {
+      /** @enum {string} */
+      kind: "pct_of_balance" | "pct_of_equity" | "amount";
+      value: string;
+    };
+    RiskProposedOrder: {
+      symbol: string;
+      /** @enum {string} */
+      side: "buy" | "sell";
+      /** @enum {string} */
+      type: "market" | "limit" | "stop" | "stop_limit";
+      volume: string;
+      price?: string | null;
+      sl?: string | null;
+      tp?: string | null;
+    };
+    RiskRuleCheck: {
+      rule: string;
+      /** @enum {string} */
+      verdict: "pass" | "refuse" | "not_applicable";
+      used: string | null;
+      would_be: string | null;
+      limit: string | null;
+      /** @description The refusal reason the pre-trade check would answer */
+      reason: string | null;
+    };
+    RiskPreviewRequest: {
+      /** Format: uuid */
+      terminal_id: string;
+      symbol: string;
+      /** @enum {string} */
+      side: "buy" | "sell";
+      /** @enum {string} */
+      entry_type: "market" | "limit" | "stop";
+      /** @description Needed for limit and stop; market uses the current price */
+      entry_price?: string | null;
+      sl: string;
+      tp?: string | null;
+      budget: components["schemas"]["RiskBudget"];
+      /** @description A price distance the caller assumes; null is none */
+      slippage?: string | null;
+      /** @description Costs the specification does not give, stated by the caller */
+      assumptions?: {
+        commission_per_lot_round_trip?: string;
+      };
+    };
+    RiskPreview: {
+      /** @description Rounded down to the step; null when even the minimum is over the budget */
+      volume: string | null;
+      volume_unrounded: string | null;
+      /** @enum {string|null} */
+      reason: "volume_min_over_budget" | null;
+      budget: string;
+      loss_at_stop: string | null;
+      commission: string | null;
+      slippage: string | null;
+      estimated_loss: string | null;
+      /** @description Net of commission; null without a take profit */
+      reward_to_risk: string | null;
+      margin_required: string | null;
+      free_margin_after: string | null;
+      checks: components["schemas"]["RiskRuleCheck"][];
+      /** @enum {string} */
+      verdict: "allow" | "refuse";
+      /** @description What the figures assume that the broker did not give */
+      assumptions: string[];
+      inputs: {
+        account_read: components["schemas"]["Age"];
+        quote: components["schemas"]["Age"];
+        specification: components["schemas"]["Age"];
+      };
+      /** Format: date-time */
+      expires_at: string;
+    };
+    RiskCheckRequest: {
+      /** Format: uuid */
+      terminal_id: string;
+      order: components["schemas"]["RiskProposedOrder"];
+    };
+    RiskCheckResult: {
+      /** @enum {string} */
+      verdict: "allow" | "refuse";
+      reason: string | null;
+      checks: components["schemas"]["RiskRuleCheck"][];
+    };
+    RiskPlanStepSpec: {
+      trigger: {
+        /** @enum {string} */
+        kind: "filled" | "r" | "price" | "money" | "pct" | "after_step";
+        /** @description The level in R, a price, money or percent; null for filled and after_step */
+        value?: string | null;
+        /** @description after_step: the step it follows */
+        step?: number | null;
+      };
+      action: {
+        /** @enum {string} */
+        kind: "set_stops" | "move_stop" | "close_part" | "trail";
+        /** @description set_stops and move_stop: a price, or entry for the entry price */
+        sl?: string | null;
+        tp?: string | null;
+        /** @description move_stop to entry: add the known costs */
+        plus_costs?: boolean;
+        /** @description close_part: percent */
+        pct?: string | null;
+        /** @enum {string|null} */
+        pct_of?: "original" | "remaining" | null;
+        /** @description trail: the trailing stop's distance */
+        distance?: string | null;
+      };
+      /**
+       * @description broker: survives MFX Hub being down. mfx: needs the cell and the terminal
+       * @enum {string}
+       */
+      held_by: "broker" | "mfx";
+    };
+    RiskPlanStep: {
+      trigger: {
+        /** @enum {string} */
+        kind: "filled" | "r" | "price" | "money" | "pct" | "after_step";
+        /** @description The level in R, a price, money or percent; null for filled and after_step */
+        value?: string | null;
+        /** @description after_step: the step it follows */
+        step?: number | null;
+      };
+      action: {
+        /** @enum {string} */
+        kind: "set_stops" | "move_stop" | "close_part" | "trail";
+        /** @description set_stops and move_stop: a price, or entry for the entry price */
+        sl?: string | null;
+        tp?: string | null;
+        /** @description move_stop to entry: add the known costs */
+        plus_costs?: boolean;
+        /** @description close_part: percent */
+        pct?: string | null;
+        /** @enum {string|null} */
+        pct_of?: "original" | "remaining" | null;
+        /** @description trail: the trailing stop's distance */
+        distance?: string | null;
+      };
+      /**
+       * @description broker: survives MFX Hub being down. mfx: needs the cell and the terminal
+       * @enum {string}
+       */
+      held_by: "broker" | "mfx";
+      n: number;
+      /** @enum {string} */
+      state: "waiting" | "armed" | "done" | "partly" | "failed" | "unresolved" | "skipped";
+      /** @description What happened, in words, with the broker's reason where there is one */
+      outcome: string | null;
+      /** Format: uuid */
+      command_id: string | null;
+    };
+    RiskPlanCreate: {
+      /** Format: uuid */
+      terminal_id: string;
+      /** @description An open position; or give order */
+      ticket?: string | null;
+      order?: components["schemas"]["RiskProposedOrder"];
+      steps: components["schemas"]["RiskPlanStepSpec"][];
+      /**
+       * @description Take over a position another manager holds
+       * @default false
+       */
+      replace: boolean;
+    };
+    RiskPlanAmend: {
+      steps: components["schemas"]["RiskPlanStepSpec"][];
+      reason?: string | null;
+    };
+    RiskPlan: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      terminal_id: string;
+      /** @description null until the order becomes a position */
+      ticket: string | null;
+      version: number;
+      /** @enum {string} */
+      state: "draft" | "armed" | "managing" | "paused" | "completed" | "failed" | "ended";
+      /** @description Why paused, failed or ended: stop_changed, position_closed, terminal_retired, by_tenant */
+      reason?: string | null;
+      /** @description The initial risk in money, recorded at arm; never redefined */
+      one_r: string | null;
+      entry_price: string | null;
+      initial_sl: string | null;
+      original_volume: string | null;
+      steps: components["schemas"]["RiskPlanStep"][];
+      /**
+       * Format: uuid
+       * @description The command that placed the order, when the plan came with one
+       */
+      command_id: string | null;
+      /** Format: date-time */
+      created_at: string;
+    };
+    RiskPlanPage: {
+      items: components["schemas"]["RiskPlan"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    /**
+     * @description day and week are 24 h and 7 days from the start; date and the -to-date kinds are calendar periods on the challenge's clock; lifetime never resets
+     * @enum {string}
+     */
+    RiskPeriodKind:
+      | "day"
+      | "date"
+      | "week"
+      | "week-to-date"
+      | "month"
+      | "month-to-date"
+      | "quarter"
+      | "quarter-to-date"
+      | "year"
+      | "year-to-date"
+      | "lifetime";
+    RiskChallengeRules: {
+      daily_loss: {
+        limit: components["schemas"]["RiskAmount"];
+        /** @enum {string} */
+        basis: "start_balance" | "start_equity" | "higher_of_both";
+      };
+      max_drawdown: {
+        /** @enum {string} */
+        kind: "static" | "trailing";
+        limit: components["schemas"]["RiskAmount"];
+      };
+      profit_target: components["schemas"]["RiskAmount"];
+      min_trading_days: number;
+      /** @description null: no end */
+      period_days: number | null;
+      /** @description broker or an IANA zone */
+      clock: string;
+      period_kinds: components["schemas"]["RiskPeriodKind"][];
+      on_fail: components["schemas"]["RiskActions"];
+    };
+    RiskChallengeCreate: {
+      name: string;
+      rules: components["schemas"]["RiskChallengeRules"];
+    };
+    RiskChallenge: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /** @enum {string} */
+      state: "active" | "archived";
+      version: number;
+      rules: components["schemas"]["RiskChallengeRules"];
+      counts: {
+        in_progress: number;
+        passed: number;
+        failed: number;
+        ended: number;
+      };
+      /** Format: date-time */
+      created_at: string;
+    };
+    RiskChallengePage: {
+      items: components["schemas"]["RiskChallenge"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    RiskEnrol: {
+      terminal_ids: string[];
+    };
+    RiskChallengeAccount: {
+      /** Format: uuid */
+      terminal_id: string;
+      version: number;
+      /** @enum {string} */
+      state: "in_progress" | "passed" | "failed" | "ended";
+      /** Format: date-time */
+      started_at: string;
+      /** Format: date-time */
+      period_ends_at: string | null;
+      start_balance: string;
+      day_pnl: string | null;
+      daily_loss_used: string | null;
+      drawdown_used: string | null;
+      profit_pct: string | null;
+      trading_days: number;
+      result: {
+        /** @description The rule that failed it; null on a pass */
+        rule: string | null;
+        /** Format: date-time */
+        at: string;
+      } | null;
+    };
+    RiskPeriod: {
+      kind: components["schemas"]["RiskPeriodKind"];
+      /** Format: date-time */
+      start: string;
+      /** Format: date-time */
+      end: string | null;
+      /** @enum {string} */
+      state: "open" | "closed";
+      stats: {
+        start_equity: string | null;
+        end_equity: string | null;
+        start_balance: string | null;
+        end_balance: string | null;
+        profit: string | null;
+        max_drawdown: string | null;
+        /** Format: date-time */
+        max_drawdown_at: string | null;
+        days_traded: number;
+        worst_daily_loss: string | null;
+      };
+    };
+    RiskChallengeAccountDetail: {
+      /** Format: uuid */
+      terminal_id: string;
+      version: number;
+      /** @enum {string} */
+      state: "in_progress" | "passed" | "failed" | "ended";
+      /** Format: date-time */
+      started_at: string;
+      /** Format: date-time */
+      period_ends_at: string | null;
+      start_balance: string;
+      day_pnl: string | null;
+      daily_loss_used: string | null;
+      drawdown_used: string | null;
+      profit_pct: string | null;
+      trading_days: number;
+      result: {
+        /** @description The rule that failed it; null on a pass */
+        rule: string | null;
+        /** Format: date-time */
+        at: string;
+      } | null;
+      periods: components["schemas"]["RiskPeriod"][];
+    };
+    RiskChallengeAccountPage: {
+      items: components["schemas"]["RiskChallengeAccount"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    /** @enum {string} */
+    RiskActivityKind:
+      | "warning"
+      | "breach"
+      | "clear"
+      | "action"
+      | "refusal"
+      | "policy_change"
+      | "plan_change"
+      | "challenge_result"
+      | "reset"
+      | "override"
+      | "outside_entry";
+    /** @enum {string} */
+    RiskOutcome:
+      "running" | "completed" | "partly" | "unresolved" | "failed" | "recorded" | "delivered";
+    RiskActivity: {
+      /** Format: uuid */
+      id: string;
+      /** Format: date-time */
+      at: string;
+      /**
+       * Format: uuid
+       * @description null for a row about several accounts (a daily reset)
+       */
+      terminal_id: string | null;
+      kind: components["schemas"]["RiskActivityKind"];
+      rule: string | null;
+      policy: {
+        /** Format: uuid */
+        id?: string;
+        version?: number;
+      } | null;
+      /** Format: uuid */
+      plan_id: string | null;
+      /** Format: uuid */
+      challenge_id: string | null;
+      /** @description What happened, in words */
+      summary: string;
+      outcome: components["schemas"]["RiskOutcome"];
+      items: {
+        ticket: string | null;
+        /** Format: uuid */
+        command_id: string | null;
+        /** @enum {string} */
+        outcome: "pending" | "succeeded" | "failed" | "unresolved" | "skipped";
+        reason: string | null;
+      }[];
+      /** @description The inputs the decision read, with their times */
+      evidence: {
+        [key: string]: unknown;
+      };
+      /** @description Who changed something: a key id, or operator; null for the platform */
+      by: string | null;
+    };
+    RiskActivityPage: {
+      items: components["schemas"]["RiskActivity"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    /** @description `data` of `risk.rule_warning`, `risk.rule_breached` and `risk.rule_cleared` */
+    RiskRuleEvent: {
+      schema_version: string;
+      /** Format: uuid */
+      terminal_id: string;
+      rule: string;
+      /** Format: uuid */
+      policy_id: string | null;
+      /** Format: uuid */
+      challenge_id?: string | null;
+      version: number;
+      used: string | null;
+      limit: string | null;
+      /** @enum {string} */
+      level: "warn" | "act" | "cleared";
+      actions: components["schemas"]["RiskActionKind"][];
+      /** @enum {string|null} */
+      cleared_by?: "reset" | "override" | "below_warn" | null;
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `risk.action_completed`: sent at each change of an action, with every account's and item's outcome */
+    RiskActionCompleted: {
+      schema_version: string;
+      /** Format: uuid */
+      action_id: string;
+      /** @enum {string} */
+      kind:
+        | "block_entries"
+        | "cancel_pending"
+        | "close_positions"
+        | "close_part"
+        | "move_stop"
+        | "set_stops";
+      /** @enum {string} */
+      state: "running" | "completed" | "partly" | "unresolved" | "failed";
+      accounts: {
+        /** Format: uuid */
+        terminal_id: string;
+        outcome: string;
+      }[];
+      unresolved: {
+        /** Format: uuid */
+        terminal_id: string;
+        ticket: string;
+        /** Format: uuid */
+        command_id: string;
+        reserved?: string | null;
+      }[];
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `risk.coverage_changed` */
+    RiskCoverageChanged: {
+      schema_version: string;
+      /** Format: uuid */
+      terminal_id: string;
+      /** @enum {string} */
+      kind: "monitoring" | "pre_trade" | "broker_held" | "managed_actions";
+      /** @enum {string} */
+      from: "healthy" | "degraded" | "disconnected" | "unknown";
+      /** @enum {string} */
+      to: "healthy" | "degraded" | "disconnected" | "unknown";
+      reason: string | null;
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `risk.plan_step`: a step changed state, or the plan did */
+    RiskPlanStepEvent: {
+      schema_version: string;
+      /** Format: uuid */
+      plan_id: string;
+      /** Format: uuid */
+      terminal_id: string;
+      ticket: string | null;
+      version: number;
+      step: number | null;
+      /** @enum {string|null} */
+      state: "waiting" | "armed" | "done" | "partly" | "failed" | "unresolved" | "skipped" | null;
+      /** @enum {string} */
+      plan_state: "draft" | "armed" | "managing" | "paused" | "completed" | "failed" | "ended";
+      outcome: string | null;
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `risk.policy_activated`: an account's policy version changed, or it was ended */
+    RiskPolicyActivated: {
+      schema_version: string;
+      /** Format: uuid */
+      terminal_id: string;
+      /** Format: uuid */
+      policy_id: string | null;
+      version: number | null;
+      previous_version: number | null;
+      relaxes: boolean;
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `risk.programme_result`: an enrolled account passed, failed or ended */
+    RiskProgrammeResult: {
+      schema_version: string;
+      /** Format: uuid */
+      challenge_id: string;
+      version: number;
+      /** Format: uuid */
+      terminal_id: string;
+      /** @enum {string} */
+      result: "passed" | "failed" | "ended";
+      rule: string | null;
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `risk.period_closed`: one period of one enrolled account, with its statistics */
+    RiskPeriodClosed: {
+      schema_version: string;
+      /** Format: uuid */
+      challenge_id: string;
+      /** Format: uuid */
+      terminal_id: string;
+      period: components["schemas"]["RiskPeriod"];
+      /** Format: date-time */
+      at: string;
+    };
+    /**
+     * @description The trading technology an account is on. A venue MFX Hub adds is a new value, so a client must read one it does not know
+     * @enum {string}
+     */
+    Venue: "mt5" | "ctrader";
+    /** @description A decimal as a string, never a JSON number */
+    CopyDecimal: string;
+    /**
+     * @description active: its deals are copied. paused: its entries are not, its closes still are. retired: final
+     * @enum {string}
+     */
+    CopyLeaderState: "active" | "paused" | "retired";
+    /**
+     * @description account: one of your accounts, whose fills are seen as they happen. external: a source that sends signals to the signals route
+     * @enum {string}
+     */
+    CopyLeaderSource: "account" | "external";
+    /**
+     * @description copying: receives the leader's deals. paused: by you, its entries are not copied, closes of what it copied still are. stopped_out: a copy limit was reached; it copies nothing new until the period ends or the stop-out is reset. unfollowed: final.
+     * @enum {string}
+     */
+    CopyFollowerState: "copying" | "paused" | "stopped_out" | "unfollowed";
+    /** @enum {string} */
+    CopyGroupState: "active" | "paused";
+    /**
+     * @description active: in force. reset: ended early by a person, with a reason. expired: its period ended
+     * @enum {string}
+     */
+    CopyStopoutState: "active" | "reset" | "expired";
+    /** @enum {string} */
+    CopyLimitKind: "daily" | "monthly" | "lifetime";
+    /**
+     * @description filled: the copy reached the venue and filled. refused: it was not sent, or the venue refused it; `reason` says why. skipped: the follower's own options left it out (skip_pending, close_only). stopout: a close made by a stop-out.
+     * @enum {string}
+     */
+    CopyOutcome: "filled" | "refused" | "skipped" | "stopout";
+    /**
+     * @description Why a copy did not fill. The list is closed: a new reason is a change to this contract. mapping: no follower symbol matched, or two did. min_volume: the scaled volume is under the follower's or the broker's minimum; it is never enlarged. no_stop: fixed_risk needs the leader's stop loss and there was none. risk_rule: a Risk Management rule on the follower account, or a leader or group limit, refused it. plan_limit: a Copy Trading limit of your plan. stopped_out: the follower is stopped out. signal_expired: the signal outlived its lifetime before it could be copied. skip_pending: the follower skips pending orders. close_only: the follower copies closes only. paused: the leader, the follower or its group is paused. account_not_connected: the follower account is not connected. market_closed: the symbol's market is closed. no_conversion: no current rate to convert the leader's figures into the follower account's currency. not_on_this_venue: the follower's venue cannot do what was asked. venue_unavailable: the venue did not answer. broker: the venue refused it; its own code is in `venue_code`.
+     * @enum {string}
+     */
+    CopyReason:
+      | "mapping"
+      | "min_volume"
+      | "no_stop"
+      | "risk_rule"
+      | "plan_limit"
+      | "stopped_out"
+      | "signal_expired"
+      | "skip_pending"
+      | "close_only"
+      | "paused"
+      | "account_not_connected"
+      | "market_closed"
+      | "no_conversion"
+      | "not_on_this_venue"
+      | "venue_unavailable"
+      | "broker";
+    /**
+     * @description How a leader volume becomes the follower's, in base units first (volume times the leader symbol's contract size), then the follower symbol's lots, rounded down to its step. balance_ratio: times follower balance over leader balance, times multiplier. equity_ratio: the same with equity. fixed_multiplier: times multiplier. contract_size: the same exposure in units. fixed_volume: always `volume`, in the follower venue's unit. fixed_risk: the follower's equity times `risk_pct`, over the distance to the leader's stop valued in the follower's currency. The leader's balance and equity are converted into the follower account's currency first.
+     * @enum {string}
+     */
+    CopyScalingMode:
+      | "balance_ratio"
+      | "equity_ratio"
+      | "fixed_multiplier"
+      | "contract_size"
+      | "fixed_volume"
+      | "fixed_risk";
+    /**
+     * @description How a leader symbol found its follower symbol. own_map: the follower's own symbol map, which always wins. instrument_key: a follower symbol with the same instrument key in MFX Hub's catalogue and an agreeing specification. same_name: the same name, with an agreeing specification. automatic: the leader's name with a short prefix or suffix, with an agreeing specification.
+     * @enum {string}
+     */
+    CopyMatch: "own_map" | "instrument_key" | "same_name" | "automatic";
+    /** @description Which of the leader's deals are copied. Nothing set copies every deal */
+    CopyLeaderFilters: {
+      /** @description Only these leader symbols; empty or absent is every symbol */
+      symbols?: string[];
+      /** @description Only deals whose order carries this text in its comment, or in its label where the venue has labels */
+      tag?: string | null;
+      /**
+       * @default both
+       * @enum {string}
+       */
+      side: "buy" | "sell" | "both";
+    };
+    /** @description What of the leader's trading is copied */
+    CopyLeaderCopies: {
+      /** @default true */
+      entries: boolean;
+      /**
+       * @description The leader's pending orders, placed, changed and cancelled
+       * @default true
+       */
+      pending: boolean;
+      /** @default true */
+      sl: boolean;
+      /** @default true */
+      tp: boolean;
+      /**
+       * @description Changes to the stop loss and take profit of an open position
+       * @default true
+       */
+      modifications: boolean;
+      /** @default true */
+      partial_closes: boolean;
+      /**
+       * @description Copy closes only: no follower opens anything new from this leader
+       * @default false
+       */
+      close_only: boolean;
+    };
+    /** @description Limits on the leader's own deals. A deal over one is copied to no follower, and every follower's log row says `refused` with reason `risk_rule`. */
+    CopyLeaderLimits: {
+      /** @description The most a deal may risk to its stop loss, as a percentage of the leader account's equity; null is no limit */
+      max_risk_pct?: components["schemas"]["CopyDecimal"] | null;
+      /** @description The most notional exposure the leader account may hold after the deal, as a multiple of its equity; null is no limit */
+      max_leverage?: components["schemas"]["CopyDecimal"] | null;
+    };
+    /** @description Which of your accounts may follow this leader */
+    CopyWhoMayJoin: {
+      /**
+       * @description any: any of your accounts. listed: only those in account_ids
+       * @default any
+       * @enum {string}
+       */
+      accounts: "any" | "listed";
+      account_ids?: string[];
+    };
+    CopyLeaderCreate: {
+      source: components["schemas"]["CopyLeaderSource"];
+      /**
+       * Format: uuid
+       * @description The account (an /accounts id) when source is account; absent or null when external
+       */
+      account_id?: string | null;
+      filters?: components["schemas"]["CopyLeaderFilters"];
+      copies?: components["schemas"]["CopyLeaderCopies"];
+      /** @description How long a signal may still be copied after MFX Hub makes it, in seconds. A follower that cannot act on it in time logs signal_expired. You set it; MFX Hub suggests none */
+      signal_lifetime_s: number;
+      limits?: components["schemas"]["CopyLeaderLimits"];
+      who_may_join?: components["schemas"]["CopyWhoMayJoin"];
+    };
+    CopyLeaderUpdate: {
+      filters?: components["schemas"]["CopyLeaderFilters"];
+      copies?: components["schemas"]["CopyLeaderCopies"];
+      signal_lifetime_s?: number;
+      limits?: components["schemas"]["CopyLeaderLimits"];
+      who_may_join?: components["schemas"]["CopyWhoMayJoin"];
+    };
+    CopyLeaderRetire: {
+      /** @description Close every follower's copied volume of this leader. False leaves those positions open, as the accounts' own */
+      close_copied: boolean;
+      reason: string;
+    };
+    CopyLeader: {
+      /** Format: uuid */
+      id: string;
+      source: components["schemas"]["CopyLeaderSource"];
+      /**
+       * Format: uuid
+       * @description The leader account; null for an external leader
+       */
+      account_id: string | null;
+      /** @description The leader account's venue; null for an external leader */
+      venue: components["schemas"]["Venue"] | null;
+      filters: components["schemas"]["CopyLeaderFilters"];
+      copies: components["schemas"]["CopyLeaderCopies"];
+      signal_lifetime_s: number;
+      limits: components["schemas"]["CopyLeaderLimits"];
+      who_may_join: components["schemas"]["CopyWhoMayJoin"];
+      state: components["schemas"]["CopyLeaderState"];
+      /** @description Followers that have not unfollowed */
+      followers_live: number;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    CopyLeaderPage: {
+      /** @description Over every leader the filters match, not this page */
+      stats: {
+        leaders: number;
+        active: number;
+        paused: number;
+        retired: number;
+      };
+      items: components["schemas"]["CopyLeader"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    /** @description An external leader opens a position: a market entry. Send volume or units, not both */
+    CopyExternalOpen: {
+      /** @description Your id for this signal, unique for the leader; a close names it */
+      id: string;
+      /** @description Your name for the instrument */
+      symbol: string;
+      /** @description The instrument key in MFX Hub's catalogue, for example fx:EURUSD or index:US30; followers' symbols are found by it */
+      instrument_key?: string | null;
+      /** @enum {string} */
+      side: "buy" | "sell";
+      /** @description In lots of the instrument's standard contract in MFX Hub's catalogue */
+      volume?: components["schemas"]["CopyDecimal"];
+      /** @description In base units, in place of volume */
+      units?: components["schemas"]["CopyDecimal"];
+      sl?: components["schemas"]["CopyDecimal"] | null;
+      tp?: components["schemas"]["CopyDecimal"] | null;
+      /**
+       * Format: date-time
+       * @description The source's own time for the signal, kept beside MFX Hub's and never used for its lifetime
+       */
+      time?: string | null;
+      /** @description The source's own account figures where it has them; kept with the signal, read by no follower */
+      account?: {
+        currency: string;
+        balance: components["schemas"]["CopyDecimal"];
+        equity: components["schemas"]["CopyDecimal"];
+      } | null;
+    } & (unknown | unknown);
+    /** @description An external leader closes the position an earlier open made; every follower closes what it copied from it */
+    CopyExternalClose: {
+      /** @description Your id for this signal */
+      id: string;
+      /** @description The id of the open this closes */
+      close: string;
+      /** Format: date-time */
+      time?: string | null;
+    };
+    /** @description An open or a close; they are told apart by close, which only a close carries */
+    CopyExternalSignal:
+      components["schemas"]["CopyExternalOpen"] | components["schemas"]["CopyExternalClose"];
+    CopySignalAccepted: {
+      /**
+       * Format: uuid
+       * @description MFX Hub's id for the signal; the copy log names it
+       */
+      signal_id: string;
+      /** @description Your id, as sent */
+      id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** @description True when this leader sent this id before; the original signal is returned and nothing is copied again */
+      duplicate: boolean;
+      /**
+       * Format: date-time
+       * @description When MFX Hub made the signal, UTC
+       */
+      iat: string;
+      /**
+       * Format: date-time
+       * @description After this no follower copies it (signal_expired)
+       */
+      exp: string;
+    };
+    /** @description The mode and the figure it needs: multiplier for balance_ratio, equity_ratio and fixed_multiplier (1 when absent for the ratios); volume for fixed_volume; risk_pct for fixed_risk. A missing figure the mode needs is 422 `validation_error`. */
+    CopyScaling: {
+      mode: components["schemas"]["CopyScalingMode"];
+      /** @description Greater than 0 */
+      multiplier?: components["schemas"]["CopyDecimal"];
+      /** @description fixed_volume: in the follower venue's unit (lots on MT5, units on cTrader) */
+      volume?: components["schemas"]["CopyDecimal"];
+      /** @description fixed_risk: the percentage of the follower's equity risked to the leader's stop */
+      risk_pct?: components["schemas"]["CopyDecimal"];
+    };
+    /** @description The follower's own limits on one copy, in its venue's unit; the broker's apply as well, and the tighter wins */
+    CopyBounds: {
+      /** @description Under it a copy is refused with min_volume, never enlarged */
+      min_volume?: components["schemas"]["CopyDecimal"] | null;
+      /** @description Over it a copy is cut to it */
+      max_volume?: components["schemas"]["CopyDecimal"] | null;
+      /** @description The most positions copied from this leader open at once; a copy over it is refused with risk_rule */
+      max_open?: number | null;
+    };
+    CopyOptions: {
+      /**
+       * @description Copy the opposite side, with the stop loss and take profit swapped
+       * @default false
+       */
+      reverse: boolean;
+      /** @default true */
+      copy_sl: boolean;
+      /** @default true */
+      copy_tp: boolean;
+      /**
+       * @description Place the leader's pending orders as pending orders. False copies one only when it fills, as a market entry. Needs a venue with pending orders
+       * @default true
+       */
+      copy_pending: boolean;
+      /**
+       * @description Copy nothing that began as a pending order, even when it fills; logged skipped with skip_pending
+       * @default false
+       */
+      skip_pending: boolean;
+      /**
+       * @description Copy closes only, so the follower winds down what it copied
+       * @default false
+       */
+      close_only: boolean;
+      /**
+       * @description Wait this long before sending each copy
+       * @default 0
+       */
+      delay_ms: number;
+    };
+    /** @description The follower's copy limits, as a percentage of `basis`, in the follower account's currency. Reaching one stops the follower out; with close_on_stopout its copied volume of this leader is closed, never the account's own positions. */
+    CopyRiskLimits: {
+      daily_pct?: components["schemas"]["CopyDecimal"] | null;
+      monthly_pct?: components["schemas"]["CopyDecimal"] | null;
+      lifetime_pct?: components["schemas"]["CopyDecimal"] | null;
+      /**
+       * @default equity
+       * @enum {string}
+       */
+      basis: "balance" | "equity";
+    };
+    /** @description scaling is required unless group_id names a group whose template has it */
+    CopyFollowerCreate: {
+      /**
+       * Format: uuid
+       * @description The follower account, an /accounts id
+       */
+      account_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      scaling?: components["schemas"]["CopyScaling"];
+      bounds?: components["schemas"]["CopyBounds"];
+      /** @description Leader symbol to follower symbol. Wins over every other match; a follower symbol the account does not have refuses with mapping */
+      symbol_map?: {
+        [key: string]: string;
+      };
+      options?: components["schemas"]["CopyOptions"];
+      risk_limits?: components["schemas"]["CopyRiskLimits"];
+      /** @default false */
+      close_on_stopout: boolean;
+      /**
+       * Format: uuid
+       * @description Enterprise: the group it joins
+       */
+      group_id?: string | null;
+    };
+    CopyFollowerUpdate: {
+      scaling?: components["schemas"]["CopyScaling"];
+      bounds?: components["schemas"]["CopyBounds"];
+      symbol_map?: {
+        [key: string]: string;
+      };
+      options?: components["schemas"]["CopyOptions"];
+      risk_limits?: components["schemas"]["CopyRiskLimits"];
+      close_on_stopout?: boolean;
+    };
+    CopyFollower: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      /** Format: uuid */
+      leader_id: string;
+      scaling: components["schemas"]["CopyScaling"];
+      bounds: components["schemas"]["CopyBounds"];
+      symbol_map: {
+        [key: string]: string;
+      };
+      options: components["schemas"]["CopyOptions"];
+      risk_limits: components["schemas"]["CopyRiskLimits"];
+      close_on_stopout: boolean;
+      /** Format: uuid */
+      group_id: string | null;
+      /** @description The mandate's version; every change is a new one */
+      mandate_version: number;
+      state: components["schemas"]["CopyFollowerState"];
+      /** @description Its active stop-outs; empty when none */
+      stopouts: components["schemas"]["CopyStopout"][];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    CopyFollowerPage: {
+      /** @description Over every follower the filters match, not this page */
+      stats: {
+        followers: number;
+        copying: number;
+        paused: number;
+        stopped_out: number;
+        unfollowed: number;
+      };
+      items: components["schemas"]["CopyFollower"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    CopyUnfollow: {
+      /** @description Close the volume copied from this leader. False leaves it open, as the account's own */
+      close_copied: boolean;
+    };
+    CopyStopoutReset: {
+      limit?: components["schemas"]["CopyLimitKind"];
+      reason: string;
+    };
+    CopyStopout: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      follower_id: string;
+      limit: components["schemas"]["CopyLimitKind"];
+      /** @description How much of the limit was used, in the follower account's currency */
+      used: components["schemas"]["CopyDecimal"];
+      /** Format: date-time */
+      period_start: string;
+      /**
+       * Format: date-time
+       * @description Null for a lifetime limit
+       */
+      period_end: string | null;
+      /** @description The copied volume it closed, when close_on_stopout was set */
+      closed: {
+        symbol: string;
+        volume: components["schemas"]["CopyDecimal"];
+        /** Format: uuid */
+        command_id: string | null;
+      }[];
+      state: components["schemas"]["CopyStopoutState"];
+      /** @description Who reset it, when and why; null unless reset */
+      reset: {
+        by: string;
+        /** Format: date-time */
+        at: string;
+        reason: string;
+      } | null;
+      /** Format: date-time */
+      created_at: string;
+    };
+    CopyStopoutPage: {
+      items: components["schemas"]["CopyStopout"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    CopyPreviewRequest: {
+      /**
+       * Format: uuid
+       * @description The account that would follow
+       */
+      account_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      scaling: components["schemas"]["CopyScaling"];
+      bounds?: components["schemas"]["CopyBounds"];
+      symbol_map?: {
+        [key: string]: string;
+      };
+      options?: components["schemas"]["CopyOptions"];
+      /** @description The leader deals to try, each a leader symbol and a volume in the leader venue's unit */
+      rows: {
+        symbol: string;
+        volume: components["schemas"]["CopyDecimal"];
+        /** @description fixed_risk: the entry; the current price when absent */
+        price?: components["schemas"]["CopyDecimal"] | null;
+        /** @description fixed_risk: the leader's stop loss */
+        sl?: components["schemas"]["CopyDecimal"] | null;
+      }[];
+    };
+    CopyPreview: {
+      /** Format: uuid */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      /** Format: uuid */
+      leader_id: string;
+      /** @description Why the follow itself would be refused, as creating it would answer; null when it would be accepted */
+      refusal: {
+        /** @description not_on_this_venue, follows_itself, not_admitted or needs_leader_account */
+        reason: string;
+        /** @description not_on_this_venue: the options the venue cannot honour */
+        options: string[];
+      } | null;
+      /** @description The figures the rows were worked from */
+      inputs: {
+        leader_currency: string | null;
+        follower_currency: string | null;
+        /** @description Leader currency to follower currency; null when the currencies are the same or no rate is current */
+        rate: string | null;
+        leader_balance: string | null;
+        leader_equity: string | null;
+        follower_balance: string | null;
+        follower_equity: string | null;
+        /** Format: date-time */
+        read_at: string | null;
+      };
+      rows: {
+        leader_symbol: string;
+        leader_volume: string;
+        instrument_key: string | null;
+        /** @description Null when no symbol matched */
+        follower_symbol: string | null;
+        matched_by: components["schemas"]["CopyMatch"] | null;
+        /** @description In the follower venue's unit; null when refused */
+        follower_volume: string | null;
+        /** @description Why this row would be refused; null when it would be copied */
+        reason: components["schemas"]["CopyReason"] | null;
+      }[];
+    };
+    /** @description Milliseconds each stage took, each measured on its own machine. A stage that did not happen for this copy is absent. broker_ms is the venue's time and is not MFX Hub's. */
+    CopyStages: {
+      /** @description Seeing the leader's deal */
+      detect_ms?: number;
+      /** @description Reporting and signing the signal */
+      sign_ms?: number;
+      /** @description Delivering it to the follower's copy host */
+      deliver_ms?: number;
+      /** @description Mapping, scaling and the risk check */
+      expand_ms?: number;
+      /** @description Waiting behind the follower account's own command */
+      queue_ms?: number;
+      /** @description Handing the order to the venue */
+      hand_ms?: number;
+      /** @description The venue's own time */
+      broker_ms?: number;
+    };
+    CopyLogEntry: {
+      /** Format: uuid */
+      id: string;
+      /**
+       * Format: date-time
+       * @description The signal's time; every row of one signal carries it
+       */
+      created_at: string;
+      /** Format: uuid */
+      signal_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** Format: uuid */
+      follower_id: string;
+      /**
+       * Format: uuid
+       * @description The follower account
+       */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      /**
+       * @description What the leader did
+       * @enum {string}
+       */
+      action:
+        | "open"
+        | "modify"
+        | "close"
+        | "close_part"
+        | "pending_place"
+        | "pending_modify"
+        | "pending_cancel";
+      /** @enum {string} */
+      side: "buy" | "sell";
+      instrument_key: string | null;
+      outcome: components["schemas"]["CopyOutcome"];
+      /** @description Null exactly when filled */
+      reason: components["schemas"]["CopyReason"] | null;
+      /** @description The venue's own code beside broker, as the venue gave it */
+      venue_code: string | null;
+      /**
+       * Format: uuid
+       * @description The command the copy became; GET /commands/{id} has it
+       */
+      command_id: string | null;
+      /** @description In the follower venue's unit */
+      copied_volume: string | null;
+      price: string | null;
+      /** @description The follower's fill price less the leader's, as a price distance; positive is worse for the follower */
+      slippage: string | null;
+      stages: components["schemas"]["CopyStages"];
+      /** @description MFX Hub's part: every stage but broker_ms, added up */
+      mfx_ms: number | null;
+      /** @description deliver_ms + expand_ms + queue_ms + hand_ms: from a held signal to the order call */
+      signal_to_order_ms: number | null;
+    };
+    CopyLogPage: {
+      /** @description Over every row the filters and the window match, not this page */
+      stats: {
+        copies: number;
+        filled: number;
+        refused: number;
+        skipped: number;
+        stopout: number;
+        /** @description Null when no row has the stages */
+        mfx_ms_p50: number | null;
+        mfx_ms_p99: number | null;
+        signal_to_order_ms_p50: number | null;
+        broker_ms_p50: number | null;
+      };
+      items: components["schemas"]["CopyLogEntry"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    /** @description What a follower created into the group starts from, for every field it leaves out */
+    CopyGroupTemplate: {
+      scaling?: components["schemas"]["CopyScaling"];
+      bounds?: components["schemas"]["CopyBounds"];
+      options?: components["schemas"]["CopyOptions"];
+      risk_limits?: components["schemas"]["CopyRiskLimits"];
+      close_on_stopout?: boolean;
+    };
+    CopyGroupCreate: {
+      name: string;
+      template?: components["schemas"]["CopyGroupTemplate"];
+      /** @description The most gross exposure the group's followers may hold together, in your reporting currency; a copy over it is refused with risk_rule. Null is no cap */
+      gross_exposure_cap?: components["schemas"]["CopyDecimal"] | null;
+      /** @description How the group's followers are placed; null is the platform's default */
+      placement_policy?: string | null;
+    };
+    CopyGroupUpdate: {
+      name?: string;
+      template?: components["schemas"]["CopyGroupTemplate"];
+      gross_exposure_cap?: components["schemas"]["CopyDecimal"] | null;
+      placement_policy?: string | null;
+    };
+    CopyGroup: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      template: components["schemas"]["CopyGroupTemplate"];
+      gross_exposure_cap: string | null;
+      placement_policy: string | null;
+      state: components["schemas"]["CopyGroupState"];
+      followers_live: number;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    CopyGroupPage: {
+      stats: {
+        groups: number;
+        active: number;
+        paused: number;
+      };
+      items: components["schemas"]["CopyGroup"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    CopyGroupMembers: {
+      follower_ids: string[];
+    };
+    CopyGroupMembersResult: {
+      results: {
+        /** Format: uuid */
+        follower_id: string;
+        /** @enum {string} */
+        outcome: "done" | "unchanged" | "refused";
+        /** @description Why it was refused: not_found, in_another_group, unfollowed */
+        reason: string | null;
+      }[];
+    };
+    /** @description Copy Trading's limits of your plan. Copied orders are counted here and are limited by these, not by commands_per_s: one leader deal may be copied to more followers at once than the command burst allows. */
+    CopyUsage: {
+      /** @description Leaders that are not retired */
+      leaders: components["schemas"]["UsageLimit"];
+      /** @description Followers that have not unfollowed */
+      followers: components["schemas"]["UsageLimit"];
+      /** @description Signals made in the current UTC day, from every leader */
+      signals_per_day: components["schemas"]["UsageLimit"];
+      /** @description How long the copy log keeps a row; null when your contract sets it */
+      log_retention_days: number | null;
+      /** @description Orders copied in the current UTC day; null where not yet measured */
+      copied_commands_today: number | null;
+    };
+    /** @description The leader's deal a copy came from, in venue-neutral terms */
+    CopyLeaderDeal: {
+      /** @enum {string} */
+      action:
+        | "open"
+        | "modify"
+        | "close"
+        | "close_part"
+        | "pending_place"
+        | "pending_modify"
+        | "pending_cancel";
+      /** @enum {string} */
+      side: "buy" | "sell";
+      /** @description The leader's volume in base units */
+      units: string;
+      price: string | null;
+      instrument_key: string | null;
+    };
+    /** @description `data` of `copy.copied`: one follower's copy filled */
+    CopyCopied: {
+      schema_version: string;
+      /** Format: uuid */
+      signal_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** Format: uuid */
+      follower_id: string;
+      /**
+       * Format: uuid
+       * @description The follower account
+       */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      /** Format: uuid */
+      command_id: string;
+      deal: components["schemas"]["CopyLeaderDeal"];
+      /** @description What the copy became on the follower account */
+      as: {
+        symbol: string;
+        /** @enum {string} */
+        side: "buy" | "sell";
+        /** @description In the follower venue's unit */
+        volume: string;
+        price: string | null;
+      };
+      /** @description MFX Hub's part (mfx_ms of the log row) */
+      latency_ms: number | null;
+      slippage: string | null;
+      stages: components["schemas"]["CopyStages"];
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `copy.refused`: one follower's copy did not fill (refused, skipped or a stop-out's close) */
+    CopyRefused: {
+      schema_version: string;
+      /** Format: uuid */
+      signal_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** Format: uuid */
+      follower_id: string;
+      /** Format: uuid */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      deal: components["schemas"]["CopyLeaderDeal"];
+      outcome: components["schemas"]["CopyOutcome"];
+      reason: components["schemas"]["CopyReason"];
+      /** @description The venue's own code beside broker */
+      venue_code: string | null;
+      /** @description The reason in words, for a person */
+      why: string | null;
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `copy.stopout`: a follower reached a copy limit and is stopped out */
+    CopyStopoutEvent: {
+      schema_version: string;
+      /** Format: uuid */
+      stopout_id: string;
+      /** Format: uuid */
+      follower_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** Format: uuid */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      limit: components["schemas"]["CopyLimitKind"];
+      /** @description In the follower account's currency */
+      used: string;
+      /** @description The copied volume closed, when close_on_stopout is set */
+      closed: {
+        symbol: string;
+        volume: string;
+        /** Format: uuid */
+        command_id: string | null;
+      }[];
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `copy.drift`: the follower's copied positions differ from what the leader's open positions and the mandate say it should hold, found when the copied positions are healed from the account. Resync after correcting the cause; MFX Hub trades nothing to close the gap. */
+    CopyDrift: {
+      schema_version: string;
+      /** Format: uuid */
+      follower_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** Format: uuid */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      /** @description How far the copied exposure is from the expected, as a percentage of the expected */
+      drift_pct: string;
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description `data` of `copy.state_changed`: a follower's state changed */
+    CopyStateChanged: {
+      schema_version: string;
+      /** Format: uuid */
+      follower_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** Format: uuid */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      from: components["schemas"]["CopyFollowerState"];
+      to: components["schemas"]["CopyFollowerState"];
+      /** @description For example paused, resumed, stopout, stopout_reset, stopout_expired, unfollowed, leader_retired. A new word may be added; read one you do not know as text */
+      why: string;
+      /** Format: date-time */
+      at: string;
+    };
   };
   responses: {
     /** @description Accepted — asynchronous; progress via events */
@@ -4203,6 +7162,7 @@ export interface components {
   };
   parameters: {
     terminalId: string;
+    accountId: string;
     ticket: number;
     cursor: string;
     limit: number;
@@ -4223,6 +7183,71 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  listTradingAccounts: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        /** @description one venue, or several comma-separated */
+        venue?: ("mt5" | "ctrader")[];
+        environment?: "live" | "demo";
+        /** @description one state, or several comma-separated */
+        state?: (
+          | "PENDING"
+          | "CONNECTING"
+          | "CONNECTED"
+          | "DEGRADED"
+          | "PAUSED"
+          | "REAUTH_NEEDED"
+          | "RETIRED"
+          | "FAILED"
+        )[];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of accounts */
+      200: {
+        headers: {
+          "X-MFX-Budget-Remaining": components["headers"]["BudgetRemaining"];
+          "X-MFX-Budget-Source": components["headers"]["BudgetSource"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TradingAccountPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getTradingAccount: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the account */
+      200: {
+        headers: {
+          "X-MFX-Budget-Remaining": components["headers"]["BudgetRemaining"];
+          "X-MFX-Budget-Source": components["headers"]["BudgetSource"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TradingAccount"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
   listTerminals: {
     parameters: {
       query?: {
@@ -4233,6 +7258,7 @@ export interface operations {
         /** @description one state, or several comma-separated */
         state?: (
           | "REQUESTED"
+          | "QUEUED"
           | "PROVISIONING"
           | "LOGGING_IN"
           | "ACTIVE"
@@ -4298,13 +7324,118 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
-      /** @description validation_error — the request names no broker or server MFX lists (an unknown or retired broker, a server of another broker), or asks a farm for a usage it does not offer. Rejected at request time, never passed to a terminal. A listed broker or server that MFX cannot use now is the 409 below */
+      /** @description validation_error — the request names no broker or server MFX lists (an unknown or retired broker, a server of another broker), or asks a farm for a usage it does not offer; farm_required — a tenant with its own farms named no farm (details `{farms: [{id, slug}]}`). Rejected at request time, never passed to a terminal. A listed broker or server that MFX cannot use now is the 409 below */
       422: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  bulkRestartTerminals: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkTerminalAsk"];
+      };
+    };
+    responses: {
+      /** @description accepted; follow it at bulk-actions/{id} */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BulkAction"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  bulkRetireTerminals: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkTerminalAsk"];
+      };
+    };
+    responses: {
+      /** @description accepted; follow it at bulk-actions/{id} */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BulkAction"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getBulkAction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the action */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BulkAction"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  cancelBulkAction: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the action, cancelled */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BulkAction"];
         };
       };
       default: components["responses"]["Error"];
@@ -4901,6 +8032,15 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
+      /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       default: components["responses"]["Error"];
     };
   };
@@ -4943,6 +8083,15 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       default: components["responses"]["Error"];
     };
   };
@@ -4966,6 +8115,15 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       default: components["responses"]["Error"];
     };
   };
@@ -5576,9 +8734,10 @@ export interface operations {
           "application/json": components["schemas"]["CandleList"];
         };
       };
-      /** @description reads_busy — your reads through terminals on this server are at their limit in flight (md.candle_reads_in_flight); ask again after Retry-After */
+      /** @description reads_busy — too many of your reads through terminals on this server are running at once; terminal_reads_limit — the terminal that would serve this read has served as many reads this minute as one terminal may (`details.limit` a minute, `details.terminal_id`). Reads the store answers whole (`source: store`) are never refused this way; a read that needs a terminal is, for any part outside the store. Ask again after Retry-After */
       429: {
         headers: {
+          /** @description Seconds: for terminal_reads_limit, to the start of the next minute */
           "Retry-After"?: number;
           [name: string]: unknown;
         };
@@ -5942,6 +9101,1652 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TenantMaintenanceTerminalPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listRiskPolicies: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        state?: "active" | "archived";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description policies */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPolicyPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createRiskPolicy: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskPolicyCreate"];
+      };
+    };
+    responses: {
+      /** @description the policy and its version 1 */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPolicy"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskPolicy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the policy */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPolicy"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listRiskPolicyVersions: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description versions */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPolicyVersionPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createRiskPolicyVersion: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskPolicyVersionCreate"];
+      };
+    };
+    responses: {
+      /** @description the new version */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPolicyVersion"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskPolicyVersion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+        version: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the version */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPolicyVersion"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  activateRiskPolicy: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskActivate"];
+      };
+    };
+    responses: {
+      /** @description one outcome per account */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskActivationResult"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listRiskAccounts: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        coverage?: "healthy" | "degraded" | "disconnected" | "unknown" | "no_rules";
+        restriction?: "none" | "entries_blocked";
+        sort?: "daily_loss_used" | "drawdown_used" | "exposure" | "inputs_age";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description accounts, the stats row first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskAccountPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskAccount: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the account */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskAccount"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  deactivateRiskAccount: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskReason"];
+      };
+    };
+    responses: {
+      /** @description the account as it now is */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskAccount"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  clearRiskBreach: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskClear"];
+      };
+    };
+    responses: {
+      /** @description the account as it now is; risk.rule_cleared is sent */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskAccount"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskEquity: {
+    parameters: {
+      query: {
+        from: string;
+        /** @description defaults to now; at most 31 days after from (422 window_too_wide) */
+        to?: string;
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["terminalId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the series */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskEquitySeries"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskCoverage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description coverage */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskCoverageSummary"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  previewRiskPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskPreviewRequest"];
+      };
+    };
+    responses: {
+      /** @description the proposed order and every rule's check */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPreview"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  checkRiskOrder: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskCheckRequest"];
+      };
+    };
+    responses: {
+      /** @description the verdict and every rule's check */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskCheckResult"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listRiskPlans: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        terminal_id?: string;
+        state?: "draft" | "armed" | "managing" | "paused" | "completed" | "failed" | "ended";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description plans */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPlanPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createRiskPlan: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskPlanCreate"];
+      };
+    };
+    responses: {
+      /** @description the plan */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPlan"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the plan */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPlan"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  endRiskPlan: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the plan, ended */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPlan"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  amendRiskPlan: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskPlanAmend"];
+      };
+    };
+    responses: {
+      /** @description the plan at its new version */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPlan"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  pauseRiskPlan: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskReason"];
+      };
+    };
+    responses: {
+      /** @description the plan, paused */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPlan"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  resumeRiskPlan: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the plan, managing again */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPlan"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listRiskChallenges: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description challenges */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskChallengePage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createRiskChallenge: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskChallengeCreate"];
+      };
+    };
+    responses: {
+      /** @description the challenge */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskChallenge"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskChallenge: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the challenge */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskChallenge"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createRiskChallengeVersion: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskChallengeRules"];
+      };
+    };
+    responses: {
+      /** @description the challenge at its new version */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskChallenge"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listRiskChallengeAccounts: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        state?: "in_progress" | "passed" | "failed" | "ended";
+        /** @description the rule that failed it */
+        rule?: "daily_loss" | "max_drawdown";
+        below_min_days?: boolean;
+        sort?: "daily_loss_used" | "drawdown" | "profit" | "trading_days" | "period_ends_at";
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description accounts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskChallengeAccountPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  enrolRiskChallengeAccounts: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RiskEnrol"];
+      };
+    };
+    responses: {
+      /** @description one outcome per account */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskActivationResult"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskChallengeAccount: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+        terminal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the account in the challenge */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskChallengeAccountDetail"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listRiskActivity: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        kind?: components["schemas"]["RiskActivityKind"][];
+        terminal_id?: string;
+        outcome?: components["schemas"]["RiskOutcome"];
+        from?: string;
+        to?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description entries, unresolved first, then newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskActivityPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listCopyLeaders: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        /** @description one state, or several comma-separated */
+        state?: components["schemas"]["CopyLeaderState"][];
+        source?: components["schemas"]["CopyLeaderSource"];
+        account_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of leaders, the stats row first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyLeaderPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createCopyLeader: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyLeaderCreate"];
+      };
+    };
+    responses: {
+      /** @description the leader, active */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyLeader"];
+        };
+      };
+      /** @description conflict - account_already_leads; quota_exceeded - plan_limit (details.limit) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description unprocessable - account_not_usable; validation_error - account_id given with source external, or missing with source account */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getCopyLeader: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the leader */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyLeader"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  updateCopyLeader: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyLeaderUpdate"];
+      };
+    };
+    responses: {
+      /** @description the leader as it now is */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyLeader"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  pauseCopyLeader: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the leader, paused */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyLeader"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  resumeCopyLeader: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the leader, active */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyLeader"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  retireCopyLeader: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyLeaderRetire"];
+      };
+    };
+    responses: {
+      /** @description the leader, retired */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyLeader"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  sendCopySignal: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyExternalSignal"];
+      };
+    };
+    responses: {
+      /** @description accepted and signed; each follower's outcome follows on the log and as events */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopySignalAccepted"];
+        };
+      };
+      /** @description state_error - leader_not_external, or the leader is paused (an open) or retired; conflict - signal_id_reused; quota_exceeded - plan_limit */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description unprocessable - unknown_open, no_contract_size */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listCopyFollowers: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        /** @description one state, or several comma-separated */
+        state?: components["schemas"]["CopyFollowerState"][];
+        leader_id?: string;
+        account_id?: string;
+        group_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of followers, the stats row first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollowerPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createCopyFollower: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyFollowerCreate"];
+      };
+    };
+    responses: {
+      /** @description the follower, copying */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      /** @description conflict - already_following; state_error - the leader is retired; quota_exceeded - plan_limit (details.limit) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description unprocessable - not_on_this_venue (details.options), follows_itself, not_admitted, needs_leader_account, account_not_usable */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  previewCopyFollower: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyPreviewRequest"];
+      };
+    };
+    responses: {
+      /** @description one row per leader symbol asked about */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyPreview"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getCopyFollower: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the follower */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  updateCopyFollower: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyFollowerUpdate"];
+      };
+    };
+    responses: {
+      /** @description the follower at its new mandate version */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      /** @description unprocessable - not_on_this_venue (details.options), needs_leader_account */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  pauseCopyFollower: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the follower, paused */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  resumeCopyFollower: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the follower as it now is */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  resyncCopyFollower: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description accepted; the follower as it is now */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  unfollowCopyLeader: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyUnfollow"];
+      };
+    };
+    responses: {
+      /** @description the follower, unfollowed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listCopyStopouts: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        /** @description one state, or several comma-separated */
+        state?: components["schemas"]["CopyStopoutState"][];
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of stop-outs */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyStopoutPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  resetCopyStopouts: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyStopoutReset"];
+      };
+    };
+    responses: {
+      /** @description the follower as it now is */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listCopyLog: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        leader_id?: string;
+        follower_id?: string;
+        /** @description the follower account */
+        account_id?: string;
+        signal_id?: string;
+        /** @description one outcome, or several comma-separated */
+        outcome?: components["schemas"]["CopyOutcome"][];
+        /** @description one reason, or several comma-separated */
+        reason?: components["schemas"]["CopyReason"][];
+        /** @description one venue, or several comma-separated */
+        venue?: components["schemas"]["Venue"][];
+        /** @description defaults to 24 hours before to */
+        from?: string;
+        /** @description defaults to now; at most 31 days after from (422 window_too_wide) */
+        to?: string;
+        /** @description created_at: newest first. mfx_ms: slowest of MFX Hub's part first */
+        sort?: "created_at" | "mfx_ms";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of the log, the stats row first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyLogPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listCopyGroups: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        state?: components["schemas"]["CopyGroupState"];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of groups, the stats row first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroupPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createCopyGroup: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyGroupCreate"];
+      };
+    };
+    responses: {
+      /** @description the group, active */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroup"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getCopyGroup: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the group */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroup"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  updateCopyGroup: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyGroupUpdate"];
+      };
+    };
+    responses: {
+      /** @description the group as it now is */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroup"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  addCopyGroupFollowers: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyGroupMembers"];
+      };
+    };
+    responses: {
+      /** @description one outcome per follower */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroupMembersResult"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  removeCopyGroupFollowers: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyGroupMembers"];
+      };
+    };
+    responses: {
+      /** @description one outcome per follower */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroupMembersResult"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  pauseCopyGroup: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the group, paused */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroup"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  resumeCopyGroup: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the group, active */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroup"];
         };
       };
       default: components["responses"]["Error"];

@@ -4,6 +4,48 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.3.0
+
+### Added
+
+- A terminal can be `QUEUED`: placed on a cell and waiting for its turn to start. A cell starts
+  terminals a few at a time so the ones already running are not slowed. `terminal.queue` says its
+  place, when it is expected to start (`expected_start_at`) and why it waits (a coarse `reason`).
+  `isUsable` is false for it, as for every state but ACTIVE.
+- `terminals.waitUntilActive(id, { timeoutMs })`: reads the terminal until it is no longer on its
+  way to ACTIVE. A QUEUED terminal is read again at its expected start (2 s to 1 min away), not on
+  a fixed beat.
+- `terminals.bulkRestart` and `terminals.bulkRetire` (`POST /v1/terminals:restart`,
+  `POST /v1/terminals:retire`): many terminals by farm, broker or ids, answered at once with the
+  action, what was refused and the expected finish. `getBulkAction` and `cancelBulkAction` follow
+  and cancel it.
+
+### Changed
+
+- The vendored API description is the platform's current public contract, with the queued state,
+  the queue fields and the bulk routes; the generated types follow it.
+
+### Fixed
+
+- A request path whose first segment holds a colon (`/terminals:restart`) is sent to the API. The
+  URL parser read `terminals:` as a scheme.
+
+## 0.2.4
+
+### Added
+
+- `client.tradingAccounts`: the trading accounts over every venue (`GET /v1/accounts`,
+  `GET /v1/accounts/{id}`, scope `acct:read`). `page()` and `list()` narrow by `venue`,
+  `environment` and `state` on the platform; `get(id)` takes the account's id or one of its
+  terminals' ids. An MT5 account's id is its terminal's id. The state is the venue-neutral word
+  (`CONNECTED`, `DEGRADED`, `REAUTH_NEEDED`, ...). `client.accounts` is unchanged: it is still the
+  balance, positions and deals of a terminal's account.
+
+### Changed
+
+- The vendored API description is the platform's current public contract, and the generated types
+  follow it.
+
 ## 0.2.3
 
 ### Added
