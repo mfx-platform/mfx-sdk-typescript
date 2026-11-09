@@ -5,6 +5,7 @@
  * after the platform's own `Retry-After`; writes are never retried, because a retried write is a
  * second order. Failures become typed errors from `errors.ts`.
  */
+import { appendFileSync } from "node:fs";
 import {
   MfxApiError,
   MfxTimeout,
@@ -37,6 +38,20 @@ const NOT_SENT = new Set([
   "UND_ERR_CONNECT_TIMEOUT",
 ]);
 
+/** The environment variable naming a file to append one JSON line to for every HTTP attempt. */
+export const CALL_LOG_ENV = "MFX_CALL_LOG";
+
+/**
+ * One HTTP attempt the client made: what was asked, the status, and how long it took.
+ * Each attempt is a call: a read retried after a 429 is two. `status` is null when no answer came
+ * (a connection that failed, a timeout). `ms` is measured on the client's own clock.
+ */
+export interface CallTiming {
+  readonly what: string;
+  readonly status: number | null;
+  readonly ms: number;
+}
+
 /** What the key had left when MFX Hub last answered. */
 export interface Budget {
   readonly remaining: number;
@@ -57,6 +72,10 @@ export interface ClientOptions {
   readonly clock?: () => number;
   /** A number in [0, 1) for the backoff's jitter; replaceable in tests. */
   readonly random?: () => number;
+  /** Told each call as it ends ({@link CallTiming}); `MFX_CALL_LOG` is the same, as a file. */
+  readonly onCall?: (timing: CallTiming) => void;
+  /** A monotonic clock in milliseconds; replaceable in tests. */
+  readonly now?: () => number;
 }
 
 /** One request, as the resource modules describe it. */
@@ -94,6 +113,9 @@ export class MfxClient {
   readonly #sleep: (ms: number) => Promise<void>;
   readonly #fetch: typeof fetch;
   readonly #random: () => number;
+  readonly #onCall: ((timing: CallTiming) => void) | undefined;
+  readonly #now: () => number;
+  readonly #callLog: string | undefined;
   #budget: Budget | null = null;
 
   /** The terminals this key's tenant owns. */
@@ -124,6 +146,9 @@ export class MfxClient {
     this.#sleep = options.sleep ?? wait;
     this.#fetch = options.fetch ?? fetch;
     this.#random = options.random ?? Math.random;
+    this.#onCall = options.onCall;
+    this.#now = options.now ?? (() => performance.now());
+    this.#callLog = process.env[CALL_LOG_ENV] || undefined;
     this.terminals = new Terminals(this);
     this.execution = new Execution(this);
     this.catalog = new Catalog(this);
@@ -213,17 +238,28 @@ export class MfxClient {
     };
     if (spec.body !== undefined) headers["Content-Type"] = "application/json";
     if (spec.idempotencyKey !== undefined) headers["Idempotency-Key"] = spec.idempotencyKey;
-    let response: Response;
+    const started = this.#now();
+    let status: number | null = null;
     try {
-      response = await this.#fetch(url, {
-        method: spec.method,
-        headers,
-        ...(spec.body === undefined ? {} : { body }),
-        signal: AbortSignal.timeout(this.#timeoutMs),
-      });
-    } catch (error) {
-      throw transportError(error, spec);
+      let response: Response;
+      try {
+        response = await this.#fetch(url, {
+          method: spec.method,
+          headers,
+          ...(spec.body === undefined ? {} : { body }),
+          signal: AbortSignal.timeout(this.#timeoutMs),
+        });
+      } catch (error) {
+        throw transportError(error, spec);
+      }
+      status = response.status;
+      return await this.#answer(response);
+    } finally {
+      this.#timed(`${spec.method} ${spec.path}`, status, started);
     }
+  }
+
+  async #answer(response: Response): Promise<Answer> {
     const text = await response.text();
     this.#noteBudget(response.headers);
     let parsed: unknown = null;
@@ -235,6 +271,28 @@ export class MfxClient {
       }
     }
     return { status: response.status, headers: response.headers, body: parsed };
+  }
+
+  /**
+   * Hand one call's timing on. Never throws: timing is an observation, not a reason for a call
+   * that succeeded to fail. Nothing but the status and the time is written: no path, id, header
+   * or key.
+   */
+  #timed(what: string, status: number | null, started: number): void {
+    const timing: CallTiming = { what, status, ms: this.#now() - started };
+    try {
+      this.#onCall?.(timing);
+    } catch {
+      // A listener's bug must not fail the call.
+    }
+    if (this.#callLog !== undefined) {
+      try {
+        const ms = Math.round(timing.ms * 1000) / 1000;
+        appendFileSync(this.#callLog, JSON.stringify({ status, ms }) + "\n", "utf8");
+      } catch {
+        // An unwritable log is no reason to fail a call.
+      }
+    }
   }
 
   #noteBudget(headers: Headers): void {

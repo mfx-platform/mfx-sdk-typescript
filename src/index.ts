@@ -6,8 +6,8 @@
  * const client = new MfxClient("https://api.dev.mfxhub.com/v1", keyId, privateKey);
  * ```
  */
-export { MfxClient, DEFAULT_READ_RETRIES, DEFAULT_TIMEOUT_MS } from "./client.js";
-export type { Answer, Budget, ClientOptions, RequestSpec } from "./client.js";
+export { MfxClient, CALL_LOG_ENV, DEFAULT_READ_RETRIES, DEFAULT_TIMEOUT_MS } from "./client.js";
+export type { Answer, Budget, CallTiming, ClientOptions, RequestSpec } from "./client.js";
 export * from "./errors.js";
 export { Page } from "./pages.js";
 export { Catalog } from "./catalog.js";

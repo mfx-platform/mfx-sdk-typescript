@@ -4,6 +4,17 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.2.3
+
+### Added
+
+- Every HTTP attempt is timed. `new MfxClient(..., { onCall })` is told each one as a `CallTiming`
+  (`what`, `status`, `ms`; `status` is `null` when no answer came), and when the environment
+  variable `MFX_CALL_LOG` names a file, one line `{"status": 200, "ms": 12.5}` is appended to it
+  for each. A read retried after a 429 is two attempts. Nothing else is written: no path, id,
+  header or key. A listener that throws, or a file that cannot be written, never fails a call.
+  The platform's checks use it to count and time a sample's calls, as they do for the Python SDK.
+
 ## 0.2.2
 
 ### Fixed
