@@ -198,12 +198,21 @@ function closing(options: ClosePosition): Record<string, unknown> {
   });
 }
 
+/** Where a command goes: a terminal's routes, or a trading account's on any venue. */
+export type Resource = "terminals" | "accounts";
+
 /** Order entry for one tenant. Every method resolves to a result; none rejects. */
 export class Execution {
   readonly #client: MfxClient;
+  readonly #resource: Resource;
 
-  constructor(client: MfxClient) {
+  /**
+   * `resource` is where the commands go: a terminal's routes (`client.execution`) or a trading
+   * account's (`client.tradingAccounts`), which take the same bodies under the same rules.
+   */
+  constructor(client: MfxClient, resource: Resource = "terminals") {
     this.#client = client;
+    this.#resource = resource;
   }
 
   /**
@@ -214,11 +223,11 @@ export class Execution {
    * belongs, a missing idempotency key, a comment over 31 characters.
    */
   async placeOrder(terminalId: string, order: PlaceOrder): Promise<ExecutionResult> {
-    const id = uuid("terminalId", terminalId);
+    const id = uuid(this.#idName, terminalId);
     const key = idempotencyKey(order.idempotencyKey);
     const body = orderBody(order);
     return this.#command(
-      { method: "POST", path: `/terminals/${id}/orders`, body, idempotencyKey: key },
+      { method: "POST", path: `/${this.#resource}/${id}/orders`, body, idempotencyKey: key },
       key,
     );
   }
@@ -347,6 +356,11 @@ export class Execution {
     return result;
   }
 
+  /** The name a wrong id is reported under. */
+  get #idName(): string {
+    return this.#resource === "accounts" ? "accountId" : "terminalId";
+  }
+
   /** One command on an existing order or position: checked, then sent once. */
   async #on(
     terminalId: string,
@@ -357,10 +371,10 @@ export class Execution {
     body?: Record<string, unknown>,
     method: "POST" | "PUT" | "DELETE" = "POST",
   ): Promise<ExecutionResult> {
-    const id = uuid("terminalId", terminalId);
+    const id = uuid(this.#idName, terminalId);
     const number = ticketOf("ticket", ticket);
     const key = idempotencyKey((options as Partial<Keyed> | undefined)?.idempotencyKey);
-    const path = `/terminals/${id}/${kind}/${String(number)}/${action}`;
+    const path = `/${this.#resource}/${id}/${kind}/${String(number)}/${action}`;
     return this.#command(
       { method, path, ...(body === undefined ? {} : { body }), idempotencyKey: key },
       key,

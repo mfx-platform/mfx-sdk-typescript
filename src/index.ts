@@ -59,11 +59,12 @@ export type {
   ModifyPosition,
   OrderType,
   PlaceOrder,
+  Resource,
   SetTrailingStop,
   Side,
   WaitFor,
 } from "./execution.js";
-export type { CommandState, ExecutionResult, Reason, Tickets } from "./results.js";
+export type { CommandState, ExecutionResult, Reason, Tickets, VenueDeal } from "./results.js";
 export { Terminals, isUsable } from "./terminals.js";
 export type {
   CreateTerminal,
@@ -84,9 +85,15 @@ export { TradingAccounts } from "./trading-accounts.js";
 export type {
   AccountEnvironment,
   AccountState,
+  CtraderGrant,
+  CtraderGrantStarted,
+  GrantScope,
+  StartCtraderGrant,
   TradingAccount,
   TradingAccountFilter,
   TradingAccountPageOptions,
+  TradingSymbol,
+  TradingSymbolList,
   Venue,
 } from "./trading-accounts.js";
 export { RequestSigner, SigningKey, signingMessage } from "./signing.js";

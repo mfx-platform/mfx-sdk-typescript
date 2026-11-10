@@ -52,31 +52,39 @@ function instant(name: string, value: unknown): string {
 /** Read the trading account behind a terminal: figures, positions, pending orders and deals. */
 export class Accounts {
   readonly #client: MfxClient;
+  readonly #resource: "terminals" | "accounts";
+  readonly #idName: string;
 
-  constructor(client: MfxClient) {
+  /**
+   * `resource` is whose account is read: a terminal's (`client.accounts`) or a trading
+   * account's on any venue (`client.tradingAccounts`), which answer the same shapes.
+   */
+  constructor(client: MfxClient, resource: "terminals" | "accounts" = "terminals") {
     this.#client = client;
+    this.#resource = resource;
+    this.#idName = resource === "accounts" ? "accountId" : "terminalId";
   }
 
   /** The account's figures. Another tenant's terminal is not found. */
   async account(terminalId: string): Promise<Account> {
-    const id = uuid("terminalId", terminalId);
+    const id = uuid(this.#idName, terminalId);
     return (await this.#client.read({
       method: "GET",
-      path: `/terminals/${id}/account`,
+      path: `/${this.#resource}/${id}/account`,
     })) as Account;
   }
 
   /** Every open position, as one snapshot with its `as_of`. */
   async positions(terminalId: string): Promise<PositionList> {
-    const id = uuid("terminalId", terminalId);
-    const path = `/terminals/${id}/positions`;
+    const id = uuid(this.#idName, terminalId);
+    const path = `/${this.#resource}/${id}/positions`;
     return (await this.#client.read({ method: "GET", path })) as PositionList;
   }
 
   /** Every pending order, as one snapshot with its `as_of`. */
   async pendingOrders(terminalId: string): Promise<PendingOrderList> {
-    const id = uuid("terminalId", terminalId);
-    const path = `/terminals/${id}/orders/pending`;
+    const id = uuid(this.#idName, terminalId);
+    const path = `/${this.#resource}/${id}/orders/pending`;
     return (await this.#client.read({ method: "GET", path })) as PendingOrderList;
   }
 
@@ -85,7 +93,7 @@ export class Accounts {
    * and so by this: an unbounded history read is the query that takes a database down.
    */
   async dealsPage(terminalId: string, options: DealPageOptions): Promise<Page<Deal>> {
-    const id = uuid("terminalId", terminalId);
+    const id = uuid(this.#idName, terminalId);
     const from = instant("from", options.from);
     const to = instant("to", options.to);
     if (options.to.getTime() < options.from.getTime()) {
@@ -102,7 +110,7 @@ export class Accounts {
     }
     const body = await this.#client.read({
       method: "GET",
-      path: `/terminals/${id}/history/deals`,
+      path: `/${this.#resource}/${id}/history/deals`,
       query: {
         from,
         to,

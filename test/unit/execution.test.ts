@@ -359,6 +359,12 @@ describe("a command's answer is read whole, and UNKNOWN is never retryable", () 
       reroutedFrom: TERMINAL,
       detail: null,
       retryAt: null,
+      venue: null,
+      venueCode: null,
+      deals: [],
+      volumeUnits: null,
+      closeByEmulated: false,
+      protectionNotSet: false,
     });
   });
 

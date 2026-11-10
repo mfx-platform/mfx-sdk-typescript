@@ -811,6 +811,19 @@ x-error-catalogue:
     retryable: true
     cause: A maintenance window refused the queued order before it ran; nothing reached the broker.
     action: Send it again under a new Idempotency-Key after the window ends.
+  - code: venue_unavailable
+    kind: command
+    status: null
+    retryable: true
+    cause: The venue could not be reached or was under maintenance; nothing was placed.
+    action: Send it again under a new Idempotency-Key once the account is CONNECTED.
+  - code: not_on_this_venue
+    kind: command
+    status: null
+    retryable: false
+    cause: The account's venue has no equivalent for this command as asked, such as removing a cTrader
+      pending order's expiry.
+    action: Change the command to one the venue takes; the route's description says which.
 components:
   securitySchemes:
     mfxSignature:
@@ -832,10 +845,12 @@ components:
         exist. When the platform cannot check the nonce because its store is unreachable, the request
         was signed correctly and is **503 `dependency_unavailable`** with `Retry-After` and `details.reason
         = nonce_store_unavailable`: retry after that many seconds. The request is still refused, never
-        let through unchecked. **A disabled or suspended tenant.** A correctly signed request from a tenant
-        the operator has disabled is **403 `tenant_disabled`**, every call. A suspended tenant''s request
-        is **403 `tenant_suspended`**, except reads (term:read, acct:read, md:read, the stream) until
-        `details.reads_until`, the end of its suspension grace. In both, `message` is the operator''s
+        let through unchecked. The same 503 with `details.reason = nonce_memory_restarted` answers a request
+        signed before the store last came back empty: it cannot know that nonce, so a fresh signature
+        is needed; re-sign and retry. **A disabled or suspended tenant.** A correctly signed request from
+        a tenant the operator has disabled is **403 `tenant_disabled`**, every call. A suspended tenant''s
+        request is **403 `tenant_suspended`**, except reads (term:read, acct:read, md:read, the stream)
+        until `details.reads_until`, the end of its suspension grace. In both, `message` is the operator''s
         message for the tenant, shown as given, and `details.since` is when it began. Neither is retryable:
         it ends when the operator enables or resumes the tenant. A closed tenant stays 401 `tenant_closed`.
         **A disabled farm.** A call that names a terminal on a farm the operator has disabled is **403
@@ -859,6 +874,13 @@ components:
         type: string
         format: uuid
     accountId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    grantId:
       name: id
       in: path
       required: true
@@ -1867,11 +1889,12 @@ components:
             it comes back by itself, or is moved after 15 minutes. DRAINED: you drained it; stopped and
             not billed, keeping its id, account and settings until you resume or retire it. PARKED: your
             account is suspended and its grace period ended; the terminal is stopped and keeps its settings,
-            its place and its login. It returns to LOGGING_IN by itself when your account is reinstated,
-            or goes to DRAINING when it is retired. QUEUED: placed on a cell and waiting for its turn
-            to start. A cell starts terminals a few at a time so that the ones already running are not
-            slowed; `queue` says your place, when it is expected to start and why it waits. It is not
-            trading yet; it starts by itself.'
+            its place and its login. Its cell stops terminals a few at a time, so one may stay as it was
+            for a while after the grace ends. It returns to LOGGING_IN by itself when your account is
+            reinstated, or goes to DRAINING when it is retired. QUEUED: placed on a cell and waiting for
+            its turn to start. A cell starts terminals a few at a time so that the ones already running
+            are not slowed; `queue` says your place, when it is expected to start and why it waits. It
+            is not trading yet; it starts by itself.'
         offline_reason:
           type:
           - string
@@ -2126,6 +2149,322 @@ components:
         created_at:
           type: string
           format: date-time
+    CtraderGrantCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - environment
+      - scope
+      - return_url
+      description: 'Start connecting a trader''s cTrader accounts. Send the trader to `consent_url`: they
+        sign in at cTrader, choose the accounts to share, and come back to `return_url`.'
+      properties:
+        environment:
+          type: string
+          enum:
+          - live
+          - demo
+          description: live or demo accounts; one grant covers one of them
+        scope:
+          type: string
+          enum:
+          - accounts
+          - trading
+          description: 'accounts: read the accounts only; trading: read them and place orders on them'
+        return_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          pattern: ^https://
+          description: Where the trader is sent after consent, https only. MFX Hub adds `grant_id`, `result`
+            (`granted`, `denied` or `failed`) and your `tenant_state` as query parameters.
+        tenant_state:
+          type:
+          - string
+          - 'null'
+          maxLength: 512
+          description: Your own value, returned unchanged on return_url; never read by MFX Hub
+    CtraderGrantStarted:
+      type: object
+      required:
+      - grant_id
+      - consent_url
+      - expires_at
+      properties:
+        grant_id:
+          type: string
+          format: uuid
+        consent_url:
+          type: string
+          format: uri
+          description: cTrader's consent page for this grant; send the trader there
+        expires_at:
+          type: string
+          format: date-time
+          description: The consent must complete before this; after it the grant is EXPIRED and a new
+            one is started
+    CtraderGrantAccount:
+      type: object
+      required:
+      - ctid_trader_account_id
+      - live
+      - broker_name
+      - login_masked
+      - account_id
+      description: One cTrader account the trader shared in this grant.
+      properties:
+        ctid_trader_account_id:
+          type: string
+          description: cTrader's own id of the account
+        live:
+          type: boolean
+        broker_name:
+          type:
+          - string
+          - 'null'
+        login_masked:
+          type:
+          - string
+          - 'null'
+          description: e.g. ****3456
+        account_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: The MFX Hub account made from it, once chosen; null until then
+    CtraderGrant:
+      type: object
+      required:
+      - id
+      - environment
+      - scope
+      - state
+      - return_url
+      - tenant_state
+      - created_at
+      - granted_at
+      - revoked_at
+      - accounts
+      properties:
+        id:
+          type: string
+          format: uuid
+        environment:
+          type: string
+          enum:
+          - live
+          - demo
+        scope:
+          type: string
+          enum:
+          - accounts
+          - trading
+        state:
+          type: string
+          enum:
+          - PENDING
+          - ACTIVE
+          - REVOKED
+          - EXPIRED
+          description: 'PENDING: waiting for the trader''s consent. ACTIVE: granted; its accounts are
+            listed. REVOKED: you revoked it, or the trader withdrew it at cTrader. EXPIRED: the consent
+            was not completed in time.'
+        return_url:
+          type:
+          - string
+          - 'null'
+        tenant_state:
+          type:
+          - string
+          - 'null'
+        created_at:
+          type: string
+          format: date-time
+        granted_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        revoked_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/CtraderGrantAccount'
+          description: Empty until the grant is ACTIVE
+    CtraderAccountsChoice:
+      type: object
+      additionalProperties: false
+      required:
+      - ctid_trader_account_ids
+      properties:
+        ctid_trader_account_ids:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+            maxLength: 32
+          description: The accounts of this grant to connect to MFX Hub, by cTrader's id
+    TradingAccountList:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradingAccount'
+    AccountConnected:
+      type: object
+      description: '`data` of an `account.connected` message on the `events` channel: a trading account
+        is connected and can be used'
+      required:
+      - schema_version
+      - account_id
+      - venue
+      - ts
+      properties:
+        schema_version:
+          type: string
+          description: The payload's version; 1
+        account_id:
+          type: string
+          format: uuid
+        venue:
+          type: string
+          enum:
+          - mt5
+          - ctrader
+        grant_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: The grant it was connected through (cTrader); absent for MT5
+        ts:
+          type: string
+          format: date-time
+          description: When it was connected
+    AccountReauthNeeded:
+      type: object
+      description: '`data` of an `account.reauth_needed` message on the `events` channel: the account''s
+        access was refused (the trader withdrew the grant at cTrader, or it was revoked); start a new
+        grant for it'
+      required:
+      - schema_version
+      - account_id
+      - venue
+      - reason
+      - ts
+      properties:
+        schema_version:
+          type: string
+          description: The payload's version; 1
+        account_id:
+          type: string
+          format: uuid
+        venue:
+          type: string
+          enum:
+          - mt5
+          - ctrader
+        reason:
+          type: string
+          enum:
+          - revoked
+          - token_invalid
+          - expired
+        ts:
+          type: string
+          format: date-time
+          description: When its access was refused
+    TradingSymbol:
+      type: object
+      description: One symbol of a cTrader account, as Spotware gives it for that account.
+      required:
+      - name
+      - symbol_id
+      - digits
+      - pip_position
+      - lot_size
+      - volume_step
+      - volume_min
+      - volume_max
+      - leverage
+      - margin_rate
+      - base_asset
+      - quote_asset
+      - enabled
+      properties:
+        name:
+          type: string
+          description: The broker's own name, as commands take it
+        symbol_id:
+          type: integer
+          format: int64
+          description: cTrader's id of the symbol
+        digits:
+          type: integer
+          description: Decimals of its price
+        pip_position:
+          type: integer
+        lot_size:
+          type: string
+          description: Units of the base asset in one lot, as a decimal string
+        volume_step:
+          type: string
+          description: Lots, as a decimal string
+        volume_min:
+          type: string
+          description: Lots
+        volume_max:
+          type:
+          - string
+          - 'null'
+          description: Lots; null when the broker states none
+        leverage:
+          type:
+          - integer
+          - 'null'
+          description: The leverage of the smallest tier, as 1:N; null when the broker names none
+        margin_rate:
+          type:
+          - string
+          - 'null'
+          description: 1 / leverage, the share of the notional held as margin at that tier
+        base_asset:
+          type:
+          - string
+          - 'null'
+        quote_asset:
+          type:
+          - string
+          - 'null'
+        enabled:
+          type: boolean
+    TradingSymbolList:
+      type: object
+      required:
+      - account_id
+      - as_of
+      - items
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        as_of:
+          type: string
+          format: date-time
+          description: When the platform read the list from Spotware
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradingSymbol'
     TradingAccountPage:
       type: object
       required:
@@ -2169,7 +2508,8 @@ components:
             to reach the broker, not a pending order''s own `expires_at`. Set from the moment the command
             is accepted, by kind: 10 s for every execution kind (order_place, order_cancel, order_modify,
             position_modify, position_close, position_close_partial, position_close_by, trailing_stop_set,
-            trailing_stop_clear); an order_place may ask for 1 s to 60 s instead with `expires_in_ms`'
+            trailing_stop_clear), 30 s for risk_sync; an order_place may ask for 1 s to 60 s instead with
+            `expires_in_ms`'
     OrderPlace:
       type: object
       description: 'Place an order. Refused before it reaches the broker — never rounded or trimmed: a
@@ -3656,6 +3996,70 @@ components:
             or PositionClosePartial, empty for an order placed without one. Null when the command carried
             none (a close without a comment, on which the closing deal takes the position''s own). Always
             served'
+        venue:
+          type: string
+          enum:
+          - mt5
+          - ctrader
+          description: 'The venue that answered: the runner''s. A result from an MT5 cell is mt5'
+        venue_code:
+          type:
+          - string
+          - 'null'
+          description: 'The venue''s own code for a refusal, verbatim, beside the classified `reason`
+            (cTrader: its error code, such as NOT_ENOUGH_MONEY). Null on MT5, whose code is `mt5_retcode`,
+            and when the venue gave none'
+        deals:
+          type:
+          - array
+          - 'null'
+          description: 'Every deal the command made, in the order they were made: two for an emulated
+            close-by (`close_by_emulated`), one for an order filled at once. Null on MT5, where `tickets.deal`
+            is the one deal of the fill'
+          items:
+            type: object
+            required:
+            - deal
+            - order
+            - position
+            - volume_units
+            - price
+            properties:
+              deal:
+                type: integer
+                format: int64
+              order:
+                type:
+                - integer
+                - 'null'
+                format: int64
+              position:
+                type:
+                - integer
+                - 'null'
+                format: int64
+              volume_units:
+                type: string
+                description: 'Decimal as a string: the deal''s volume in units of the instrument (100,000
+                  for one lot of EURUSD at a lot size of 100,000)'
+              price:
+                type: string
+                description: 'Decimal as a string: the deal''s price'
+        volume_units:
+          type:
+          - string
+          - 'null'
+          description: 'Decimal as a string: the volume the command filled, in units of the instrument
+            (the sum of `deals`). `exec_volume` stays in lots. Null on MT5 and when nothing filled'
+        close_by_emulated:
+          type: boolean
+          description: True for a close-by the venue has no equivalent for, done as two closes (cTrader);
+            false otherwise
+        protection_not_set:
+          type: boolean
+          description: 'True when a market order filled but its stop loss or take profit could not be
+            set on the new position (cTrader sets them after the fill): the position is open without them.
+            False otherwise'
     Command:
       type: object
       required:
@@ -3686,6 +4090,10 @@ components:
           - position_close_by
           - trailing_stop_set
           - trailing_stop_clear
+          - risk_sync
+          description: 'What the command does. `risk_sync` is the platform''s own: it hands the cell the
+            version of the risk policy in force on the account. A tenant never sends one and may see one
+            by its id'
         state:
           $ref: '#/components/schemas/CommandState'
         final:
@@ -3706,7 +4114,8 @@ components:
             to reach the broker, not a pending order''s own `expires_at`. Set from the moment the command
             is accepted, by kind: 10 s for every execution kind (order_place, order_cancel, order_modify,
             position_modify, position_close, position_close_partial, position_close_by, trailing_stop_set,
-            trailing_stop_clear); an order_place may ask for 1 s to 60 s instead with `expires_in_ms`'
+            trailing_stop_clear), 30 s for risk_sync; an order_place may ask for 1 s to 60 s instead with
+            `expires_in_ms`'
         result:
           oneOf:
           - $ref: '#/components/schemas/CommandResult'
@@ -10376,7 +10785,8 @@ components:
     CopyExternalOpen:
       type: object
       additionalProperties: false
-      description: 'An external leader opens a position: a market entry. Send volume or units, not both'
+      description: 'An external leader opens a position: a market entry. Exactly one of volume or units;
+        both or neither is refused 422 unprocessable, details.reason volume_or_units'
       required:
       - id
       - symbol
@@ -10447,11 +10857,6 @@ components:
               $ref: '#/components/schemas/CopyDecimal'
             equity:
               $ref: '#/components/schemas/CopyDecimal'
-      oneOf:
-      - required:
-        - volume
-      - required:
-        - units
     CopyExternalClose:
       type: object
       additionalProperties: false
@@ -11876,6 +12281,554 @@ paths:
                 $ref: '#/components/schemas/TradingAccount'
         default:
           $ref: '#/components/responses/Error'
+  /accounts/{id}/account:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    get:
+      tags:
+      - accounts
+      operationId: getTradingAccountFunds
+      summary: Balance, equity, margin and profile of one trading account, on any venue
+      description: 'The account''s lead runner answers it (its writer, else its only runner): the same
+        answer as the terminal read of an MT5 account, on any venue. Another tenant''s account is 404.
+        On cTrader, equity is computed by the platform from the balance, each open position''s floating
+        profit at the bid for a buy and the ask for a sell, its swap and its commission, because Spotware
+        sends none; `stale` is true when it could not be computed for longer than the platform''s stale
+        window.'
+      x-scope: acct:read
+      responses:
+        '200':
+          description: the account now; terminal_id is its lead runner
+          headers:
+            X-MFX-Budget-Remaining:
+              $ref: '#/components/headers/BudgetRemaining'
+            X-MFX-Budget-Source:
+              $ref: '#/components/headers/BudgetSource'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/positions:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    get:
+      tags:
+      - accounts
+      operationId: listTradingAccountPositions
+      summary: Open positions of one trading account (as_of), never paged
+      description: 'The account''s lead runner answers it (its writer, else its only runner): the same
+        answer as the terminal read of an MT5 account, on any venue. Another tenant''s account is 404.
+        A cTrader position''s volume is in lots of its symbol (cTrader''s volume divided by its lot size),
+        and its ticket is cTrader''s position id.'
+      x-scope: acct:read
+      responses:
+        '200':
+          description: every open position, as of one snapshot
+          headers:
+            X-MFX-Budget-Remaining:
+              $ref: '#/components/headers/BudgetRemaining'
+            X-MFX-Budget-Source:
+              $ref: '#/components/headers/BudgetSource'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionList'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/orders/pending:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    get:
+      tags:
+      - accounts
+      operationId: listTradingAccountPendingOrders
+      summary: Pending orders of one trading account (as_of), never paged
+      description: 'The account''s lead runner answers it (its writer, else its only runner): the same
+        answer as the terminal read of an MT5 account, on any venue. Another tenant''s account is 404.'
+      x-scope: acct:read
+      responses:
+        '200':
+          description: every pending order, as of one snapshot
+          headers:
+            X-MFX-Budget-Remaining:
+              $ref: '#/components/headers/BudgetRemaining'
+            X-MFX-Budget-Source:
+              $ref: '#/components/headers/BudgetSource'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingOrderList'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/history/deals:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - name: from
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+    - name: to
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+    - name: position
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      description: Only the deals of this position
+    - $ref: '#/components/parameters/cursor'
+    - $ref: '#/components/parameters/limit'
+    get:
+      tags:
+      - accounts
+      operationId: listTradingAccountDeals
+      summary: Deals of one trading account in a window, newest first by (time, deal), optionally of one
+        position
+      description: 'The account''s lead runner answers it (its writer, else its only runner): the same
+        answer as the terminal read of an MT5 account, on any venue. Another tenant''s account is 404.
+        Read from the venue on demand, bounded at 10 s, never stored; `to - from` is at most 31 days,
+        as the terminal read. On cTrader every time is Spotware''s UTC (no broker clock is involved),
+        a deal''s `entry` is `out` when it closed volume and `in` otherwise, `close_reason` is null (cTrader
+        states none on a deal), and `magic` is the origin marker the order was placed with (its label).'
+      x-scope: acct:read
+      responses:
+        '200':
+          description: a page of deals
+          headers:
+            X-MFX-Budget-Remaining:
+              $ref: '#/components/headers/BudgetRemaining'
+            X-MFX-Budget-Source:
+              $ref: '#/components/headers/BudgetSource'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealPage'
+        '422':
+          description: window_too_wide - more than 31 days, or from after to
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: upstream_error - venue_timeout (no answer within 10 s) or deals_unreadable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/symbols:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    get:
+      tags:
+      - accounts
+      operationId: listTradingAccountSymbols
+      summary: The symbols one cTrader account can trade, with their volume rules and leverage
+      description: 'Read from Spotware through the account and held for an hour; what one account of a
+        broker can trade need not be another''s. A volume a command sends must be a whole `volume_step`
+        between `volume_min` and `volume_max`, in lots. An MT5 account is answered 409 `not_on_this_venue`:
+        its symbols are its broker''s catalogue (`/brokers/{id}/symbols`).'
+      x-scope: acct:read
+      responses:
+        '200':
+          description: the account's symbols
+          headers:
+            X-MFX-Budget-Remaining:
+              $ref: '#/components/headers/BudgetRemaining'
+            X-MFX-Budget-Source:
+              $ref: '#/components/headers/BudgetSource'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradingSymbolList'
+        '409':
+          description: not_on_this_venue - an MT5 account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: upstream_error - venue_unavailable (the account is not connected now)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/orders:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    post:
+      tags:
+      - accounts
+      operationId: placeTradingAccountOrder
+      summary: Place a market or pending order on a trading account, on any venue → 202 + command_id
+      description: 'The order goes to the account''s lead runner (its writer, else its only runner) and
+        is the same command as the terminal route''s: the same body, the same Idempotency-Key rule, the
+        same expiry and the same result on `GET /commands/{id}`. An MT5 account''s order through this
+        route and through its terminal''s is the same command. The account is found by its own id or,
+        for an MT5 account, the id of either of its terminals; another tenant''s account is 404. On cTrader
+        the volume must be a whole `volume_step` of the symbol between `volume_min` and `volume_max` (`/accounts/{id}/symbols`),
+        `magic` travels as the order''s label and comes back on its deals, and a market order needs a
+        fresh price (`no_tick` without one).'
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderPlace'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        '403':
+          description: execution_not_permitted - the account's runner may not execute orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: tenant or farm suspended, or the account has no runner that can take commands (StateError)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: 'risk_refused - the entry breaks a Risk Management rule in force on the account;
+            nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/orders/{ticket}/cancel:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - $ref: '#/components/parameters/ticket'
+    post:
+      tags:
+      - accounts
+      operationId: cancelTradingAccountOrder
+      summary: Cancel a pending order of a trading account; no body, the ticket is the order
+      description: The terminal route's cancel, sent to the account's lead runner. On cTrader the ticket
+        is cTrader's order id.
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/orders/{ticket}/modify:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - $ref: '#/components/parameters/ticket'
+    post:
+      tags:
+      - accounts
+      operationId: modifyTradingAccountOrder
+      summary: Amend a pending order of a trading account; what is not sent stays as it is
+      description: The terminal route's amend, sent to the account's lead runner. On cTrader a pending
+        order's expiry can be changed but not removed (`not_on_this_venue`).
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderModify'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        '422':
+          description: 'risk_refused - the entry breaks a Risk Management rule in force on the account;
+            nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/positions/{ticket}/modify:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - $ref: '#/components/parameters/ticket'
+    post:
+      tags:
+      - accounts
+      operationId: modifyTradingAccountPosition
+      summary: Modify a position's stop loss, take profit or both, on a trading account
+      description: The terminal route's modify, sent to the account's lead runner. On cTrader the ticket
+        is cTrader's position id.
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PositionModify'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        '422':
+          description: 'risk_refused - the entry breaks a Risk Management rule in force on the account;
+            nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/positions/{ticket}/close:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - $ref: '#/components/parameters/ticket'
+    post:
+      tags:
+      - accounts
+      operationId: closeTradingAccountPosition
+      summary: Close a position of a trading account in full
+      description: The terminal route's close, sent to the account's lead runner.
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PositionClose'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/positions/{ticket}/close-partial:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - $ref: '#/components/parameters/ticket'
+    post:
+      tags:
+      - accounts
+      operationId: closeTradingAccountPositionPartial
+      summary: Close part of a position of a trading account, inside the symbol's step
+      description: The terminal route's partial close, sent to the account's lead runner. On cTrader the
+        volume must be a whole `volume_step` of the symbol.
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PositionClosePartial'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/positions/{ticket}/close-by:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - $ref: '#/components/parameters/ticket'
+    post:
+      tags:
+      - accounts
+      operationId: closeTradingAccountPositionBy
+      summary: Close a position against an opposite one in the same symbol, on a trading account
+      description: 'The terminal route''s close-by, sent to the account''s lead runner. cTrader has no
+        close-by: the platform closes the two positions one after the other in one command, reports both
+        deals in `deals` and sets `close_by_emulated`; if the second close fails, the result is that close''s,
+        with the first deal kept.'
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PositionCloseBy'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/positions/{ticket}/trailing-stop:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - $ref: '#/components/parameters/ticket'
+    put:
+      tags:
+      - accounts
+      operationId: setTradingAccountTrailingStop
+      summary: Set or change a position's trailing stop on a trading account, kept by the platform
+      description: The terminal route's trailing stop, kept for the account's lead runner. On a cTrader
+        account it is 409 `state_error` with `details.reason` `not_on_this_venue` until the platform keeps
+        trailing stops there.
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrailingStopSet'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        '409':
+          description: state_error with details.reason not_on_this_venue - a cTrader account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      tags:
+      - accounts
+      operationId: clearTradingAccountTrailingStop
+      summary: Remove a position's trailing stop on a trading account; the stop stays where it is
+      description: The terminal route's clear, for the account's lead runner. On a cTrader account it
+        is 409 `state_error` with `details.reason` `not_on_this_venue`.
+      x-scope: exec:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      responses:
+        '202':
+          $ref: '#/components/responses/CommandAccepted'
+        '409':
+          description: state_error with details.reason not_on_this_venue - a cTrader account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/ctrader/grants:
+    post:
+      tags:
+      - accounts
+      operationId: startCtraderGrant
+      summary: Start connecting a trader's cTrader accounts; answers the consent URL to send them to
+      description: The trader signs in at cTrader with their cTrader ID and chooses which of their accounts
+        to share. MFX Hub never sees their password. After consent the trader is sent to `return_url`
+        with `grant_id`, `result` and your `tenant_state`; then read the grant for the accounts it lists
+        and choose which to connect. The consent link lives 15 minutes. A tenant whose plan does not include
+        cTrader is 403 `feature_not_entitled`.
+      x-scope: term:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CtraderGrantCreate'
+      responses:
+        '201':
+          description: the grant, PENDING, with the consent URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CtraderGrantStarted'
+        '403':
+          description: 'feature_not_entitled: the tenant''s plan does not include cTrader'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/ctrader/grants/{id}:
+    parameters:
+    - $ref: '#/components/parameters/grantId'
+    get:
+      tags:
+      - accounts
+      operationId: getCtraderGrant
+      summary: One cTrader grant, its state and the accounts it lists
+      x-scope: acct:read
+      responses:
+        '200':
+          description: the grant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CtraderGrant'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      tags:
+      - accounts
+      operationId: revokeCtraderGrant
+      summary: Revoke a cTrader grant; its accounts can no longer be read or traded
+      description: The grant's access is deleted. Each account connected through it moves to REAUTH_NEEDED
+        and an `account.reauth_needed` event is sent; a new grant reconnects it. Revoking a revoked grant
+        answers it unchanged.
+      x-scope: term:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      responses:
+        '200':
+          description: the grant, REVOKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CtraderGrant'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/ctrader/grants/{id}/accounts:
+    parameters:
+    - $ref: '#/components/parameters/grantId'
+    post:
+      tags:
+      - accounts
+      operationId: connectCtraderAccounts
+      summary: Connect some of a grant's cTrader accounts to MFX Hub
+      description: 'Each chosen account becomes a trading account of yours (`venue: ctrader`), PENDING
+        until MFX Hub has authorised it at cTrader, then CONNECTED with an `account.connected` event.
+        Choosing an account already connected answers it unchanged. A grant that is not ACTIVE is 409
+        `state_error`; an id the grant does not list is 422 `unprocessable`.'
+      x-scope: term:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CtraderAccountsChoice'
+      responses:
+        '200':
+          description: the trading accounts, one per chosen id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradingAccountList'
+        default:
+          $ref: '#/components/responses/Error'
   /terminals:
     post:
       tags:
@@ -12173,13 +13126,19 @@ paths:
         15 minutes: FAILED when it has not completed, at once when the broker refuses it. A FAILED terminal
         is tried again after `terminals.login_cooloff_minutes` (30), at most `terminals.login_cycles_per_day`
         (3) times a day, never after a refusal; retire the FAILED terminals you no longer need. MFX retires
-        none of yours by itself. One already DRAINING or RETIRED is answered as it is.'
+        none of yours by itself. One already DRAINING or RETIRED is answered as it is. A cell stops terminals
+        a few at a time, so that the ones still running on it are not slowed: when its cell has no slot
+        for the stop now, the answer is the terminal as it is (ACTIVE, OFFLINE, PARKED, PROVISIONING or
+        LOGGING_IN), its retire waits in the cell''s line with no deadline, and it moves to DRAINING at
+        its turn by itself. The same request again answers the same retire. A cell that cannot be heard
+        does not hold a stop: its terminals drain at once.'
       x-scope: term:write
       parameters:
       - $ref: '#/components/parameters/idempotencyKey'
       responses:
         '202':
-          description: accepted; the terminal is DRAINING (or already RETIRED)
+          description: accepted; the terminal is DRAINING (or already RETIRED), or as it was while its
+            retire waits for its cell's slot
           content:
             application/json:
               schema:
@@ -15682,6 +16641,8 @@ paths:
         '4029': too many connections for the tenant or for this key's cap (ws_conns, details.scope); an
           error op with rate_limited came first. Close one, then reconnect after details.retry_after_s
       x-events:
+      - account.connected
+      - account.reauth_needed
       - terminal.state_changed
       - terminal.condition_changed
       - terminal.operation_changed
@@ -15735,6 +16696,10 @@ paths:
       - platform.update_pending
       - replica.failover
       x-event-payloads:
+        account.connected:
+          $ref: '#/components/schemas/AccountConnected'
+        account.reauth_needed:
+          $ref: '#/components/schemas/AccountReauthNeeded'
         md.candle_closed:
           $ref: '#/components/schemas/MdCandleClosed'
         terminal.state_changed:

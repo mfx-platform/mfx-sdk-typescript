@@ -52,6 +52,8 @@ export type Reason =
   | "expired"
   | "unknown"
   | "maintenance"
+  | "venue_unavailable"
+  | "not_on_this_venue"
   | "transport_error"
   | "timeout"
   | "refused";
@@ -71,6 +73,8 @@ const REASONS: ReadonlySet<string> = new Set<Reason>([
   "expired",
   "unknown",
   "maintenance",
+  "venue_unavailable",
+  "not_on_this_venue",
   "transport_error",
   "timeout",
   "refused",
@@ -81,6 +85,18 @@ export interface Tickets {
   readonly order: number | null;
   readonly deal: number | null;
   readonly position: number | null;
+}
+
+/**
+ * One deal a command made, as the venue reported it (cTrader): two for an emulated close-by, one
+ * for an order filled at once. `volumeUnits` is in units of the instrument, not lots.
+ */
+export interface VenueDeal {
+  readonly deal: number;
+  readonly order: number | null;
+  readonly position: number | null;
+  readonly volumeUnits: string | null;
+  readonly price: string | null;
 }
 
 /**
@@ -130,6 +146,39 @@ export interface ExecutionResult {
   readonly detail: string | null;
   /** When sending it again can work: a maintenance window's end, where the platform said. */
   readonly retryAt: Date | null;
+  /** The venue that answered, `mt5` or `ctrader`; null until there is a result. */
+  readonly venue: string | null;
+  /**
+   * The venue's own code for a refusal, verbatim, beside `reason` (cTrader: such as
+   * NOT_ENOUGH_MONEY). Null on MT5, whose code is `mt5Retcode`.
+   */
+  readonly venueCode: string | null;
+  /** Every deal the command made, in order (cTrader). Empty on MT5, where `tickets.deal` is it. */
+  readonly deals: readonly VenueDeal[];
+  /** The volume filled in units of the instrument; `execVolume` stays in lots. Null on MT5. */
+  readonly volumeUnits: string | null;
+  /** A close-by the venue has no equivalent for, done as two closes (cTrader). */
+  readonly closeByEmulated: boolean;
+  /** A market order filled but its stop loss or take profit could not be set: it is open without. */
+  readonly protectionNotSet: boolean;
+}
+
+function deals(value: unknown): readonly VenueDeal[] {
+  if (!Array.isArray(value)) return [];
+  const out: VenueDeal[] = [];
+  for (const item of value as unknown[]) {
+    const one = record(item);
+    const deal = int(one.deal);
+    if (deal === null) continue;
+    out.push({
+      deal,
+      order: int(one.order),
+      position: int(one.position),
+      volumeUnits: decimalOut(one.volume_units),
+      price: decimalOut(one.price),
+    });
+  }
+  return out;
 }
 
 function int(value: unknown): number | null {
@@ -190,6 +239,12 @@ export function fromCommand(
     reroutedFrom: text(result.rerouted_from),
     detail: null,
     retryAt: null,
+    venue: text(result.venue),
+    venueCode: text(result.venue_code),
+    deals: deals(result.deals),
+    volumeUnits: decimalOut(result.volume_units),
+    closeByEmulated: result.close_by_emulated === true,
+    protectionNotSet: result.protection_not_set === true,
   };
 }
 

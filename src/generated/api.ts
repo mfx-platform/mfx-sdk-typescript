@@ -46,6 +46,375 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/accounts/{id}/account": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * Balance, equity, margin and profile of one trading account, on any venue
+     * @description The account's lead runner answers it (its writer, else its only runner): the same answer as the terminal read of an MT5 account, on any venue. Another tenant's account is 404. On cTrader, equity is computed by the platform from the balance, each open position's floating profit at the bid for a buy and the ask for a sell, its swap and its commission, because Spotware sends none; `stale` is true when it could not be computed for longer than the platform's stale window.
+     */
+    get: operations["getTradingAccountFunds"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/positions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * Open positions of one trading account (as_of), never paged
+     * @description The account's lead runner answers it (its writer, else its only runner): the same answer as the terminal read of an MT5 account, on any venue. Another tenant's account is 404. A cTrader position's volume is in lots of its symbol (cTrader's volume divided by its lot size), and its ticket is cTrader's position id.
+     */
+    get: operations["listTradingAccountPositions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/orders/pending": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * Pending orders of one trading account (as_of), never paged
+     * @description The account's lead runner answers it (its writer, else its only runner): the same answer as the terminal read of an MT5 account, on any venue. Another tenant's account is 404.
+     */
+    get: operations["listTradingAccountPendingOrders"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/history/deals": {
+    parameters: {
+      query: {
+        from: string;
+        to: string;
+        /** @description Only the deals of this position */
+        position?: number;
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * Deals of one trading account in a window, newest first by (time, deal), optionally of one position
+     * @description The account's lead runner answers it (its writer, else its only runner): the same answer as the terminal read of an MT5 account, on any venue. Another tenant's account is 404. Read from the venue on demand, bounded at 10 s, never stored; `to - from` is at most 31 days, as the terminal read. On cTrader every time is Spotware's UTC (no broker clock is involved), a deal's `entry` is `out` when it closed volume and `in` otherwise, `close_reason` is null (cTrader states none on a deal), and `magic` is the origin marker the order was placed with (its label).
+     */
+    get: operations["listTradingAccountDeals"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/symbols": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * The symbols one cTrader account can trade, with their volume rules and leverage
+     * @description Read from Spotware through the account and held for an hour; what one account of a broker can trade need not be another's. A volume a command sends must be a whole `volume_step` between `volume_min` and `volume_max`, in lots. An MT5 account is answered 409 `not_on_this_venue`: its symbols are its broker's catalogue (`/brokers/{id}/symbols`).
+     */
+    get: operations["listTradingAccountSymbols"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/orders": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Place a market or pending order on a trading account, on any venue → 202 + command_id
+     * @description The order goes to the account's lead runner (its writer, else its only runner) and is the same command as the terminal route's: the same body, the same Idempotency-Key rule, the same expiry and the same result on `GET /commands/{id}`. An MT5 account's order through this route and through its terminal's is the same command. The account is found by its own id or, for an MT5 account, the id of either of its terminals; another tenant's account is 404. On cTrader the volume must be a whole `volume_step` of the symbol between `volume_min` and `volume_max` (`/accounts/{id}/symbols`), `magic` travels as the order's label and comes back on its deals, and a market order needs a fresh price (`no_tick` without one).
+     */
+    post: operations["placeTradingAccountOrder"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/orders/{ticket}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel a pending order of a trading account; no body, the ticket is the order
+     * @description The terminal route's cancel, sent to the account's lead runner. On cTrader the ticket is cTrader's order id.
+     */
+    post: operations["cancelTradingAccountOrder"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/orders/{ticket}/modify": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Amend a pending order of a trading account; what is not sent stays as it is
+     * @description The terminal route's amend, sent to the account's lead runner. On cTrader a pending order's expiry can be changed but not removed (`not_on_this_venue`).
+     */
+    post: operations["modifyTradingAccountOrder"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/positions/{ticket}/modify": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Modify a position's stop loss, take profit or both, on a trading account
+     * @description The terminal route's modify, sent to the account's lead runner. On cTrader the ticket is cTrader's position id.
+     */
+    post: operations["modifyTradingAccountPosition"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/positions/{ticket}/close": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Close a position of a trading account in full
+     * @description The terminal route's close, sent to the account's lead runner.
+     */
+    post: operations["closeTradingAccountPosition"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/positions/{ticket}/close-partial": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Close part of a position of a trading account, inside the symbol's step
+     * @description The terminal route's partial close, sent to the account's lead runner. On cTrader the volume must be a whole `volume_step` of the symbol.
+     */
+    post: operations["closeTradingAccountPositionPartial"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/positions/{ticket}/close-by": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Close a position against an opposite one in the same symbol, on a trading account
+     * @description The terminal route's close-by, sent to the account's lead runner. cTrader has no close-by: the platform closes the two positions one after the other in one command, reports both deals in `deals` and sets `close_by_emulated`; if the second close fails, the result is that close's, with the first deal kept.
+     */
+    post: operations["closeTradingAccountPositionBy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/positions/{ticket}/trailing-stop": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set or change a position's trailing stop on a trading account, kept by the platform
+     * @description The terminal route's trailing stop, kept for the account's lead runner. On a cTrader account it is 409 `state_error` with `details.reason` `not_on_this_venue` until the platform keeps trailing stops there.
+     */
+    put: operations["setTradingAccountTrailingStop"];
+    post?: never;
+    /**
+     * Remove a position's trailing stop on a trading account; the stop stays where it is
+     * @description The terminal route's clear, for the account's lead runner. On a cTrader account it is 409 `state_error` with `details.reason` `not_on_this_venue`.
+     */
+    delete: operations["clearTradingAccountTrailingStop"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/ctrader/grants": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start connecting a trader's cTrader accounts; answers the consent URL to send them to
+     * @description The trader signs in at cTrader with their cTrader ID and chooses which of their accounts to share. MFX Hub never sees their password. After consent the trader is sent to `return_url` with `grant_id`, `result` and your `tenant_state`; then read the grant for the accounts it lists and choose which to connect. The consent link lives 15 minutes. A tenant whose plan does not include cTrader is 403 `feature_not_entitled`.
+     */
+    post: operations["startCtraderGrant"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/ctrader/grants/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["grantId"];
+      };
+      cookie?: never;
+    };
+    /** One cTrader grant, its state and the accounts it lists */
+    get: operations["getCtraderGrant"];
+    put?: never;
+    post?: never;
+    /**
+     * Revoke a cTrader grant; its accounts can no longer be read or traded
+     * @description The grant's access is deleted. Each account connected through it moves to REAUTH_NEEDED and an `account.reauth_needed` event is sent; a new grant reconnects it. Revoking a revoked grant answers it unchanged.
+     */
+    delete: operations["revokeCtraderGrant"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/ctrader/grants/{id}/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["grantId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Connect some of a grant's cTrader accounts to MFX Hub
+     * @description Each chosen account becomes a trading account of yours (`venue: ctrader`), PENDING until MFX Hub has authorised it at cTrader, then CONNECTED with an `account.connected` event. Choosing an account already connected answers it unchanged. A grant that is not ACTIVE is 409 `state_error`; an id the grant does not list is 422 `unprocessable`.
+     */
+    post: operations["connectCtraderAccounts"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/terminals": {
     parameters: {
       query?: never;
@@ -169,7 +538,7 @@ export interface paths {
     post?: never;
     /**
      * Retire a terminal — it drains, then retires; answered with its state now
-     * @description A terminal that is ACTIVE, OFFLINE, PARKED or still PROVISIONING (waiting for its login, for example for a credential) drains: its cell stops it and deletes its folder, and it is RETIRED when the cell confirms, or by the platform's deadline when the cell never held it. One that is REQUESTED, FAILED or DRAINED is RETIRED at once. One that is LOGGING_IN drains as PROVISIONING does: its cell stops the login and deletes its folder. A login ends by itself within 15 minutes: FAILED when it has not completed, at once when the broker refuses it. A FAILED terminal is tried again after `terminals.login_cooloff_minutes` (30), at most `terminals.login_cycles_per_day` (3) times a day, never after a refusal; retire the FAILED terminals you no longer need. MFX retires none of yours by itself. One already DRAINING or RETIRED is answered as it is.
+     * @description A terminal that is ACTIVE, OFFLINE, PARKED or still PROVISIONING (waiting for its login, for example for a credential) drains: its cell stops it and deletes its folder, and it is RETIRED when the cell confirms, or by the platform's deadline when the cell never held it. One that is REQUESTED, FAILED or DRAINED is RETIRED at once. One that is LOGGING_IN drains as PROVISIONING does: its cell stops the login and deletes its folder. A login ends by itself within 15 minutes: FAILED when it has not completed, at once when the broker refuses it. A FAILED terminal is tried again after `terminals.login_cooloff_minutes` (30), at most `terminals.login_cycles_per_day` (3) times a day, never after a refusal; retire the FAILED terminals you no longer need. MFX retires none of yours by itself. One already DRAINING or RETIRED is answered as it is. A cell stops terminals a few at a time, so that the ones still running on it are not slowed: when its cell has no slot for the stop now, the answer is the terminal as it is (ACTIVE, OFFLINE, PARKED, PROVISIONING or LOGGING_IN), its retire waits in the cell's line with no deadline, and it moves to DRAINING at its turn by itself. The same request again answers the same retire. A cell that cannot be heard does not hold a stop: its terminals drain at once.
      */
     delete: operations["retireTerminal"];
     options?: never;
@@ -2701,7 +3070,7 @@ export interface components {
       streaming: boolean;
       execution: boolean;
       /**
-       * @description As `Terminal.state`. OFFLINE: its cell cannot run it (`offline_reason` says why); it comes back by itself, or is moved after 15 minutes. DRAINED: you drained it; stopped and not billed, keeping its id, account and settings until you resume or retire it. PARKED: your account is suspended and its grace period ended; the terminal is stopped and keeps its settings, its place and its login. It returns to LOGGING_IN by itself when your account is reinstated, or goes to DRAINING when it is retired. QUEUED: placed on a cell and waiting for its turn to start. A cell starts terminals a few at a time so that the ones already running are not slowed; `queue` says your place, when it is expected to start and why it waits. It is not trading yet; it starts by itself.
+       * @description As `Terminal.state`. OFFLINE: its cell cannot run it (`offline_reason` says why); it comes back by itself, or is moved after 15 minutes. DRAINED: you drained it; stopped and not billed, keeping its id, account and settings until you resume or retire it. PARKED: your account is suspended and its grace period ended; the terminal is stopped and keeps its settings, its place and its login. Its cell stops terminals a few at a time, so one may stay as it was for a while after the grace ends. It returns to LOGGING_IN by itself when your account is reinstated, or goes to DRAINING when it is retired. QUEUED: placed on a cell and waiting for its turn to start. A cell starts terminals a few at a time so that the ones already running are not slowed; `queue` says your place, when it is expected to start and why it waits. It is not trading yet; it starts by itself.
        * @enum {string}
        */
       state:
@@ -2834,6 +3203,157 @@ export interface components {
       /** Format: date-time */
       created_at: string;
     };
+    /** @description Start connecting a trader's cTrader accounts. Send the trader to `consent_url`: they sign in at cTrader, choose the accounts to share, and come back to `return_url`. */
+    CtraderGrantCreate: {
+      /**
+       * @description live or demo accounts; one grant covers one of them
+       * @enum {string}
+       */
+      environment: "live" | "demo";
+      /**
+       * @description accounts: read the accounts only; trading: read them and place orders on them
+       * @enum {string}
+       */
+      scope: "accounts" | "trading";
+      /**
+       * Format: uri
+       * @description Where the trader is sent after consent, https only. MFX Hub adds `grant_id`, `result` (`granted`, `denied` or `failed`) and your `tenant_state` as query parameters.
+       */
+      return_url: string;
+      /** @description Your own value, returned unchanged on return_url; never read by MFX Hub */
+      tenant_state?: string | null;
+    };
+    CtraderGrantStarted: {
+      /** Format: uuid */
+      grant_id: string;
+      /**
+       * Format: uri
+       * @description cTrader's consent page for this grant; send the trader there
+       */
+      consent_url: string;
+      /**
+       * Format: date-time
+       * @description The consent must complete before this; after it the grant is EXPIRED and a new one is started
+       */
+      expires_at: string;
+    };
+    /** @description One cTrader account the trader shared in this grant. */
+    CtraderGrantAccount: {
+      /** @description cTrader's own id of the account */
+      ctid_trader_account_id: string;
+      live: boolean;
+      broker_name: string | null;
+      /** @description e.g. ****3456 */
+      login_masked: string | null;
+      /**
+       * Format: uuid
+       * @description The MFX Hub account made from it, once chosen; null until then
+       */
+      account_id: string | null;
+    };
+    CtraderGrant: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      environment: "live" | "demo";
+      /** @enum {string} */
+      scope: "accounts" | "trading";
+      /**
+       * @description PENDING: waiting for the trader's consent. ACTIVE: granted; its accounts are listed. REVOKED: you revoked it, or the trader withdrew it at cTrader. EXPIRED: the consent was not completed in time.
+       * @enum {string}
+       */
+      state: "PENDING" | "ACTIVE" | "REVOKED" | "EXPIRED";
+      return_url: string | null;
+      tenant_state: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      granted_at: string | null;
+      /** Format: date-time */
+      revoked_at: string | null;
+      /** @description Empty until the grant is ACTIVE */
+      accounts: components["schemas"]["CtraderGrantAccount"][];
+    };
+    CtraderAccountsChoice: {
+      /** @description The accounts of this grant to connect to MFX Hub, by cTrader's id */
+      ctid_trader_account_ids: string[];
+    };
+    TradingAccountList: {
+      items: components["schemas"]["TradingAccount"][];
+    };
+    /** @description `data` of an `account.connected` message on the `events` channel: a trading account is connected and can be used */
+    AccountConnected: {
+      /** @description The payload's version; 1 */
+      schema_version: string;
+      /** Format: uuid */
+      account_id: string;
+      /** @enum {string} */
+      venue: "mt5" | "ctrader";
+      /**
+       * Format: uuid
+       * @description The grant it was connected through (cTrader); absent for MT5
+       */
+      grant_id?: string | null;
+      /**
+       * Format: date-time
+       * @description When it was connected
+       */
+      ts: string;
+    };
+    /** @description `data` of an `account.reauth_needed` message on the `events` channel: the account's access was refused (the trader withdrew the grant at cTrader, or it was revoked); start a new grant for it */
+    AccountReauthNeeded: {
+      /** @description The payload's version; 1 */
+      schema_version: string;
+      /** Format: uuid */
+      account_id: string;
+      /** @enum {string} */
+      venue: "mt5" | "ctrader";
+      /** @enum {string} */
+      reason: "revoked" | "token_invalid" | "expired";
+      /**
+       * Format: date-time
+       * @description When its access was refused
+       */
+      ts: string;
+    };
+    /** @description One symbol of a cTrader account, as Spotware gives it for that account. */
+    TradingSymbol: {
+      /** @description The broker's own name, as commands take it */
+      name: string;
+      /**
+       * Format: int64
+       * @description cTrader's id of the symbol
+       */
+      symbol_id: number;
+      /** @description Decimals of its price */
+      digits: number;
+      pip_position: number;
+      /** @description Units of the base asset in one lot, as a decimal string */
+      lot_size: string;
+      /** @description Lots, as a decimal string */
+      volume_step: string;
+      /** @description Lots */
+      volume_min: string;
+      /** @description Lots; null when the broker states none */
+      volume_max: string | null;
+      /** @description The leverage of the smallest tier, as 1:N; null when the broker names none */
+      leverage: number | null;
+      /** @description 1 / leverage, the share of the notional held as margin at that tier */
+      margin_rate: string | null;
+      base_asset: string | null;
+      quote_asset: string | null;
+      enabled: boolean;
+    };
+    TradingSymbolList: {
+      /** Format: uuid */
+      account_id: string;
+      /**
+       * Format: date-time
+       * @description When the platform read the list from Spotware
+       */
+      as_of: string;
+      items: components["schemas"]["TradingSymbol"][];
+    };
     TradingAccountPage: {
       /** @description Opaque (created_at, id) cursor for the following page; null on the last page */
       next_cursor: string | null;
@@ -2850,7 +3370,7 @@ export interface components {
       duplicate: boolean;
       /**
        * Format: date-time
-       * @description After this the command is EXPIRED and never executes: a cell refuses an envelope past it, and a command still on the platform is swept EXPIRED. It is the command's deadline to reach the broker, not a pending order's own `expires_at`. Set from the moment the command is accepted, by kind: 10 s for every execution kind (order_place, order_cancel, order_modify, position_modify, position_close, position_close_partial, position_close_by, trailing_stop_set, trailing_stop_clear); an order_place may ask for 1 s to 60 s instead with `expires_in_ms`
+       * @description After this the command is EXPIRED and never executes: a cell refuses an envelope past it, and a command still on the platform is swept EXPIRED. It is the command's deadline to reach the broker, not a pending order's own `expires_at`. Set from the moment the command is accepted, by kind: 10 s for every execution kind (order_place, order_cancel, order_modify, position_modify, position_close, position_close_partial, position_close_by, trailing_stop_set, trailing_stop_clear), 30 s for risk_sync; an order_place may ask for 1 s to 60 s instead with `expires_in_ms`
        */
       expires_at?: string;
     };
@@ -3703,13 +4223,44 @@ export interface components {
       magic?: number | null;
       /** @description The comment the command sent to the broker: the one asked for on OrderPlace, PositionClose or PositionClosePartial, empty for an order placed without one. Null when the command carried none (a close without a comment, on which the closing deal takes the position's own). Always served */
       comment?: string | null;
+      /**
+       * @description The venue that answered: the runner's. A result from an MT5 cell is mt5
+       * @enum {string}
+       */
+      venue?: "mt5" | "ctrader";
+      /** @description The venue's own code for a refusal, verbatim, beside the classified `reason` (cTrader: its error code, such as NOT_ENOUGH_MONEY). Null on MT5, whose code is `mt5_retcode`, and when the venue gave none */
+      venue_code?: string | null;
+      /** @description Every deal the command made, in the order they were made: two for an emulated close-by (`close_by_emulated`), one for an order filled at once. Null on MT5, where `tickets.deal` is the one deal of the fill */
+      deals?:
+        | {
+            /** Format: int64 */
+            deal: number;
+            /** Format: int64 */
+            order: number | null;
+            /** Format: int64 */
+            position: number | null;
+            /** @description Decimal as a string: the deal's volume in units of the instrument (100,000 for one lot of EURUSD at a lot size of 100,000) */
+            volume_units: string;
+            /** @description Decimal as a string: the deal's price */
+            price: string;
+          }[]
+        | null;
+      /** @description Decimal as a string: the volume the command filled, in units of the instrument (the sum of `deals`). `exec_volume` stays in lots. Null on MT5 and when nothing filled */
+      volume_units?: string | null;
+      /** @description True for a close-by the venue has no equivalent for, done as two closes (cTrader); false otherwise */
+      close_by_emulated?: boolean;
+      /** @description True when a market order filled but its stop loss or take profit could not be set on the new position (cTrader sets them after the fill): the position is open without them. False otherwise */
+      protection_not_set?: boolean;
     };
     Command: {
       /** Format: uuid */
       command_id: string;
       /** Format: uuid */
       terminal_id: string;
-      /** @enum {string} */
+      /**
+       * @description What the command does. `risk_sync` is the platform's own: it hands the cell the version of the risk policy in force on the account. A tenant never sends one and may see one by its id
+       * @enum {string}
+       */
       kind:
         | "order_place"
         | "order_cancel"
@@ -3719,7 +4270,8 @@ export interface components {
         | "position_close_partial"
         | "position_close_by"
         | "trailing_stop_set"
-        | "trailing_stop_clear";
+        | "trailing_stop_clear"
+        | "risk_sync";
       state: components["schemas"]["CommandState"];
       final: boolean;
       /** Format: date-time */
@@ -3728,7 +4280,7 @@ export interface components {
       updated_at: string;
       /**
        * Format: date-time
-       * @description After this the command is EXPIRED and never executes: a cell refuses an envelope past it, and a command still on the platform is swept EXPIRED. It is the command's deadline to reach the broker, not a pending order's own `expires_at`. Set from the moment the command is accepted, by kind: 10 s for every execution kind (order_place, order_cancel, order_modify, position_modify, position_close, position_close_partial, position_close_by, trailing_stop_set, trailing_stop_clear); an order_place may ask for 1 s to 60 s instead with `expires_in_ms`
+       * @description After this the command is EXPIRED and never executes: a cell refuses an envelope past it, and a command still on the platform is swept EXPIRED. It is the command's deadline to reach the broker, not a pending order's own `expires_at`. Set from the moment the command is accepted, by kind: 10 s for every execution kind (order_place, order_cancel, order_modify, position_modify, position_close, position_close_partial, position_close_by, trailing_stop_set, trailing_stop_clear), 30 s for risk_sync; an order_place may ask for 1 s to 60 s instead with `expires_in_ms`
        */
       expires_at?: string | null;
       /** @description Null until the command has an outcome */
@@ -6529,7 +7081,7 @@ export interface components {
       next_cursor: string | null;
       returned?: number;
     };
-    /** @description An external leader opens a position: a market entry. Send volume or units, not both */
+    /** @description An external leader opens a position: a market entry. Exactly one of volume or units; both or neither is refused 422 unprocessable, details.reason volume_or_units */
     CopyExternalOpen: {
       /** @description Your id for this signal, unique for the leader; a close names it */
       id: string;
@@ -6556,7 +7108,7 @@ export interface components {
         balance: components["schemas"]["CopyDecimal"];
         equity: components["schemas"]["CopyDecimal"];
       } | null;
-    } & (unknown | unknown);
+    };
     /** @description An external leader closes the position an earlier open made; every follower closes what it copied from it */
     CopyExternalClose: {
       /** @description Your id for this signal */
@@ -7163,6 +7715,7 @@ export interface components {
   parameters: {
     terminalId: string;
     accountId: string;
+    grantId: string;
     ticket: number;
     cursor: string;
     limit: number;
@@ -7243,6 +7796,551 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TradingAccount"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getTradingAccountFunds: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the account now; terminal_id is its lead runner */
+      200: {
+        headers: {
+          "X-MFX-Budget-Remaining": components["headers"]["BudgetRemaining"];
+          "X-MFX-Budget-Source": components["headers"]["BudgetSource"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Account"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listTradingAccountPositions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description every open position, as of one snapshot */
+      200: {
+        headers: {
+          "X-MFX-Budget-Remaining": components["headers"]["BudgetRemaining"];
+          "X-MFX-Budget-Source": components["headers"]["BudgetSource"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PositionList"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listTradingAccountPendingOrders: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description every pending order, as of one snapshot */
+      200: {
+        headers: {
+          "X-MFX-Budget-Remaining": components["headers"]["BudgetRemaining"];
+          "X-MFX-Budget-Source": components["headers"]["BudgetSource"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PendingOrderList"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listTradingAccountDeals: {
+    parameters: {
+      query: {
+        from: string;
+        to: string;
+        /** @description Only the deals of this position */
+        position?: number;
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of deals */
+      200: {
+        headers: {
+          "X-MFX-Budget-Remaining": components["headers"]["BudgetRemaining"];
+          "X-MFX-Budget-Source": components["headers"]["BudgetSource"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DealPage"];
+        };
+      };
+      /** @description window_too_wide - more than 31 days, or from after to */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description upstream_error - venue_timeout (no answer within 10 s) or deals_unreadable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listTradingAccountSymbols: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the account's symbols */
+      200: {
+        headers: {
+          "X-MFX-Budget-Remaining": components["headers"]["BudgetRemaining"];
+          "X-MFX-Budget-Source": components["headers"]["BudgetSource"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TradingSymbolList"];
+        };
+      };
+      /** @description not_on_this_venue - an MT5 account */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description upstream_error - venue_unavailable (the account is not connected now) */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  placeTradingAccountOrder: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["OrderPlace"];
+      };
+    };
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      /** @description execution_not_permitted - the account's runner may not execute orders */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description tenant or farm suspended, or the account has no runner that can take commands (StateError) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  cancelTradingAccountOrder: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      default: components["responses"]["Error"];
+    };
+  };
+  modifyTradingAccountOrder: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["OrderModify"];
+      };
+    };
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  modifyTradingAccountPosition: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PositionModify"];
+      };
+    };
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  closeTradingAccountPosition: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["PositionClose"];
+      };
+    };
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      default: components["responses"]["Error"];
+    };
+  };
+  closeTradingAccountPositionPartial: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PositionClosePartial"];
+      };
+    };
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      default: components["responses"]["Error"];
+    };
+  };
+  closeTradingAccountPositionBy: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PositionCloseBy"];
+      };
+    };
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      default: components["responses"]["Error"];
+    };
+  };
+  setTradingAccountTrailingStop: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TrailingStopSet"];
+      };
+    };
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      /** @description state_error with details.reason not_on_this_venue - a cTrader account */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  clearTradingAccountTrailingStop: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+        ticket: components["parameters"]["ticket"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      202: components["responses"]["CommandAccepted"];
+      /** @description state_error with details.reason not_on_this_venue - a cTrader account */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  startCtraderGrant: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CtraderGrantCreate"];
+      };
+    };
+    responses: {
+      /** @description the grant, PENDING, with the consent URL */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CtraderGrantStarted"];
+        };
+      };
+      /** @description feature_not_entitled: the tenant's plan does not include cTrader */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getCtraderGrant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["grantId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the grant */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CtraderGrant"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  revokeCtraderGrant: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["grantId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the grant, REVOKED */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CtraderGrant"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  connectCtraderAccounts: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["grantId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CtraderAccountsChoice"];
+      };
+    };
+    responses: {
+      /** @description the trading accounts, one per chosen id */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TradingAccountList"];
         };
       };
       default: components["responses"]["Error"];
@@ -7478,7 +8576,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description accepted; the terminal is DRAINING (or already RETIRED) */
+      /** @description accepted; the terminal is DRAINING (or already RETIRED), or as it was while its retire waits for its cell's slot */
       202: {
         headers: {
           [name: string]: unknown;
