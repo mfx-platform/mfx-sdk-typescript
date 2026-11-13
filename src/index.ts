@@ -81,6 +81,14 @@ export type {
   TerminalState,
   WaitOptions,
 } from "./terminals.js";
+export { MarketData } from "./md.js";
+export type {
+  AccountCandlesOptions,
+  AccountMdSubscription,
+  AccountSubscriptionPageOptions,
+  Candle,
+  CandleList,
+} from "./md.js";
 export { TradingAccounts } from "./trading-accounts.js";
 export type {
   AccountEnvironment,

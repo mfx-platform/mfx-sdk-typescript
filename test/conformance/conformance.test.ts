@@ -11,6 +11,7 @@ import { describe, expect, inject, it } from "vitest";
 
 import * as errors from "../../src/errors.js";
 import { MfxClient, SigningKey, StreamMessage, signingMessage } from "../../src/index.js";
+import type { Timeframe } from "../../src/index.js";
 
 interface Vocabulary {
   readonly key: { readonly id: string; readonly seed_hex: string };
@@ -160,6 +161,37 @@ async function call(
   }
   if (op === "stream.close_waiting") {
     return closeWaiting(client, a.channels as string[]);
+  }
+  if (op === "md.subscribe_account") {
+    const subscription = await client.md.subscribeAccount(String(a.account_id), String(a.symbol), {
+      idempotencyKey: String(a.idempotency_key),
+    });
+    return {
+      id: subscription.id,
+      account_id: subscription.account_id,
+      symbol: subscription.symbol,
+      state: subscription.state,
+    };
+  }
+  if (op === "md.account_subscriptions") {
+    const symbols: string[] = [];
+    for await (const subscription of client.md.accountSubscriptions(String(a.account_id))) {
+      symbols.push(subscription.symbol);
+    }
+    return { symbols };
+  }
+  if (op === "md.account_candles") {
+    const bars = await client.md.accountCandles(String(a.account_id), {
+      symbol: String(a.symbol),
+      timeframe: a.timeframe as Timeframe,
+      from: new Date(String(a.from)),
+      to: new Date(String(a.to)),
+    });
+    return {
+      count: bars.items.length,
+      first_open: bars.items[0]?.o ?? null,
+      last_close: bars.items.at(-1)?.c ?? null,
+    };
   }
   if (op in VOCABULARY.ops) throw new NotYet(`this SDK has no ${op} yet`);
   throw new Error(`this runner does not know the operation ${JSON.stringify(op)}`);

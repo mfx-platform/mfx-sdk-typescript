@@ -4,6 +4,18 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.0
+
+### Added
+
+- Market data by a cTrader account, as `client.md`: `subscribeAccount(accountId, symbol, { idempotencyKey })`
+  streams one symbol's spots on `md:{accountId}:{symbol}` (scope `md:write`; `pending` until the
+  first spot), `accountSubscriptionsPage` and `accountSubscriptions` list them (`md:read`),
+  `unsubscribe(subscriptionId, { idempotencyKey })` stops one, and
+  `accountCandles(accountId, { symbol, timeframe, from, to, limit })` reads Spotware's bars
+  through the account, at most 1000 a call. An MT5 account is a `StateError` with
+  `details.reason` `not_on_this_venue`.
+
 ## 0.4.0
 
 ### Added

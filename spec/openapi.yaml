@@ -6678,6 +6678,67 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MdSubscription'
+    AccountMdSubscriptionCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - symbol
+      properties:
+        symbol:
+          type: string
+          description: As `GET /accounts/{id}/symbols` lists it
+    AccountMdSubscription:
+      type: object
+      description: A cTrader account's market-data subscription
+      required:
+      - id
+      - account_id
+      - symbol
+      - state
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Stopped with DELETE /md/subscriptions/{id}
+        account_id:
+          type: string
+          format: uuid
+        symbol:
+          type: string
+        state:
+          type: string
+          enum:
+          - pending
+          - streaming
+          - stopped
+          description: '`pending` until the first spot after it; `streaming` once one has arrived'
+        first_tick_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    AccountMdSubscriptionPage:
+      type: object
+      required:
+      - items
+      - next_cursor
+      properties:
+        next_cursor:
+          type:
+          - string
+          - 'null'
+          description: Opaque (created_at, id) cursor for the following page; null on the last page
+        returned:
+          type: integer
+          description: How many items are in THIS page; never a total
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountMdSubscription'
     CredentialSubmission:
       type: object
       description: 'What a tenant sends to put its own broker login on a terminal. The only request body
@@ -12426,6 +12487,157 @@ paths:
                 $ref: '#/components/schemas/Error'
         default:
           $ref: '#/components/responses/Error'
+  /accounts/{id}/md/subscriptions:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    post:
+      tags:
+      - md
+      operationId: createAccountSubscription
+      summary: Stream one symbol's spots of one of your cTrader accounts; state pending until its first
+        spot
+      description: 'The cTrader counterpart of `POST /md/subscriptions`, keyed on the account instead
+        of a server. The platform subscribes the symbol''s spots on that account at Spotware, and they
+        stream on the `md:{account_id}:{symbol}` channel as `md.tick`. Two of your accounts at one broker
+        and environment share one stream. A resource, not a command: it is created at once, `pending`
+        until the first spot arrives. One per account and symbol: asking again answers the live one; asking
+        after a stop reopens it. Stopped with `DELETE /md/subscriptions/{id}`. Another tenant''s account,
+        or none, is 404; an MT5 account is 409 `state_error` with `details.reason` `not_on_this_venue`
+        (it streams its server: `POST /md/subscriptions`).'
+      x-scope: md:write
+      parameters:
+      - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountMdSubscriptionCreate'
+      responses:
+        '201':
+          description: created, state pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountMdSubscription'
+        '409':
+          description: state_error - an MT5 account (`details.reason` `not_on_this_venue`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      tags:
+      - md
+      operationId: listAccountSubscriptions
+      summary: The account's market-data subscriptions, newest first
+      x-scope: md:read
+      parameters:
+      - $ref: '#/components/parameters/cursor'
+      - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: a page of the account's subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountMdSubscriptionPage'
+        default:
+          $ref: '#/components/responses/Error'
+  /accounts/{id}/md/candles:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    - name: symbol
+      in: query
+      required: true
+      schema:
+        type: string
+    - name: tf
+      in: query
+      required: true
+      schema:
+        type: string
+        enum:
+        - M1
+        - M5
+        - M15
+        - M30
+        - H1
+        - H4
+        - D1
+        - W1
+        - MN1
+    - name: from
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+    - name: to
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 1000
+    get:
+      tags:
+      - md
+      operationId: getAccountCandles
+      summary: Historical candles of one of your cTrader accounts by bar time, read from Spotware through
+        the account; at most 1000 bars per call, the newest of the window
+      description: 'The cTrader counterpart of `GET /md/candles`, keyed on the account instead of a broker
+        and server. The bars are Spotware''s trendbars for the account''s own symbol name (`GET /accounts/{id}/symbols`),
+        in UTC, `v` the bar''s tick volume, oldest first, the forming bar included when the window reaches
+        now. `source` is `terminal`: the account''s runner read them, and nothing is stored. The read
+        counts against the same per-terminal limit a minute as `GET /md/candles` (429 `terminal_reads_limit`).
+        Another tenant''s account, or none, is 404; an unknown symbol is 404; an MT5 account is 409 `state_error`
+        with `details.reason` `not_on_this_venue` (its candles are its server''s: `GET /md/candles`).'
+      x-scope: md:read
+      responses:
+        '200':
+          description: candles, oldest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandleList'
+        '409':
+          description: state_error - an MT5 account (`details.reason` `not_on_this_venue`), or an account
+            with no runner yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: terminal_reads_limit - the account's runner has served as many reads this minute
+            as one terminal may (`details.limit` a minute). Ask again after Retry-After
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to the start of the next minute
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: upstream_error - terminal_timeout (no answer within 10 s), terminal_unavailable
+            (the account is not connected now) or candles_unreadable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /accounts/{id}/symbols:
     parameters:
     - $ref: '#/components/parameters/accountId'
@@ -14388,7 +14600,7 @@ paths:
       tags:
       - md
       operationId: deleteSubscription
-      summary: Stop a subscription
+      summary: Stop a subscription, by server or by a cTrader account
       x-scope: md:write
       parameters:
       - $ref: '#/components/parameters/idempotencyKey'

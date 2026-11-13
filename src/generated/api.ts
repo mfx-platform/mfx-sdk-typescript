@@ -141,6 +141,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/accounts/{id}/md/subscriptions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /** The account's market-data subscriptions, newest first */
+    get: operations["listAccountSubscriptions"];
+    put?: never;
+    /**
+     * Stream one symbol's spots of one of your cTrader accounts; state pending until its first spot
+     * @description The cTrader counterpart of `POST /md/subscriptions`, keyed on the account instead of a server. The platform subscribes the symbol's spots on that account at Spotware, and they stream on the `md:{account_id}:{symbol}` channel as `md.tick`. Two of your accounts at one broker and environment share one stream. A resource, not a command: it is created at once, `pending` until the first spot arrives. One per account and symbol: asking again answers the live one; asking after a stop reopens it. Stopped with `DELETE /md/subscriptions/{id}`. Another tenant's account, or none, is 404; an MT5 account is 409 `state_error` with `details.reason` `not_on_this_venue` (it streams its server: `POST /md/subscriptions`).
+     */
+    post: operations["createAccountSubscription"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/accounts/{id}/md/candles": {
+    parameters: {
+      query: {
+        symbol: string;
+        tf: "M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1" | "W1" | "MN1";
+        from: string;
+        to: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * Historical candles of one of your cTrader accounts by bar time, read from Spotware through the account; at most 1000 bars per call, the newest of the window
+     * @description The cTrader counterpart of `GET /md/candles`, keyed on the account instead of a broker and server. The bars are Spotware's trendbars for the account's own symbol name (`GET /accounts/{id}/symbols`), in UTC, `v` the bar's tick volume, oldest first, the forming bar included when the window reaches now. `source` is `terminal`: the account's runner read them, and nothing is stored. The read counts against the same per-terminal limit a minute as `GET /md/candles` (429 `terminal_reads_limit`). Another tenant's account, or none, is 404; an unknown symbol is 404; an MT5 account is 409 `state_error` with `details.reason` `not_on_this_venue` (its candles are its server's: `GET /md/candles`).
+     */
+    get: operations["getAccountCandles"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/accounts/{id}/symbols": {
     parameters: {
       query?: never;
@@ -1273,7 +1324,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** Stop a subscription */
+    /** Stop a subscription, by server or by a cTrader account */
     delete: operations["deleteSubscription"];
     options?: never;
     head?: never;
@@ -5428,6 +5479,37 @@ export interface components {
       returned?: number;
       items: components["schemas"]["MdSubscription"][];
     };
+    AccountMdSubscriptionCreate: {
+      /** @description As `GET /accounts/{id}/symbols` lists it */
+      symbol: string;
+    };
+    /** @description A cTrader account's market-data subscription */
+    AccountMdSubscription: {
+      /**
+       * Format: uuid
+       * @description Stopped with DELETE /md/subscriptions/{id}
+       */
+      id: string;
+      /** Format: uuid */
+      account_id: string;
+      symbol: string;
+      /**
+       * @description `pending` until the first spot after it; `streaming` once one has arrived
+       * @enum {string}
+       */
+      state: "pending" | "streaming" | "stopped";
+      /** Format: date-time */
+      first_tick_at?: string | null;
+      /** Format: date-time */
+      created_at: string;
+    };
+    AccountMdSubscriptionPage: {
+      /** @description Opaque (created_at, id) cursor for the following page; null on the last page */
+      next_cursor: string | null;
+      /** @description How many items are in THIS page; never a total */
+      returned?: number;
+      items: components["schemas"]["AccountMdSubscription"][];
+    };
     /** @description What a tenant sends to put its own broker login on a terminal. The only request body in MFX Hub that carries a secret: it is read once, wrapped, written to the platform's secret store and never kept anywhere else, logged or echoed. Unknown properties are refused rather than ignored, so a misspelled password is an error and not a credential with no password. */
     CredentialSubmission: {
       /** @description The MT5 account number */
@@ -7915,6 +7997,129 @@ export interface operations {
         };
       };
       /** @description upstream_error - venue_timeout (no answer within 10 s) or deals_unreadable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listAccountSubscriptions: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of the account's subscriptions */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AccountMdSubscriptionPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  createAccountSubscription: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AccountMdSubscriptionCreate"];
+      };
+    };
+    responses: {
+      /** @description created, state pending */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AccountMdSubscription"];
+        };
+      };
+      /** @description state_error - an MT5 account (`details.reason` `not_on_this_venue`) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getAccountCandles: {
+    parameters: {
+      query: {
+        symbol: string;
+        tf: "M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1" | "W1" | "MN1";
+        from: string;
+        to: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description candles, oldest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CandleList"];
+        };
+      };
+      /** @description state_error - an MT5 account (`details.reason` `not_on_this_venue`), or an account with no runner yet */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description terminal_reads_limit - the account's runner has served as many reads this minute as one terminal may (`details.limit` a minute). Ask again after Retry-After */
+      429: {
+        headers: {
+          /** @description Seconds to the start of the next minute */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description upstream_error - terminal_timeout (no answer within 10 s), terminal_unavailable (the account is not connected now) or candles_unreadable */
       503: {
         headers: {
           [name: string]: unknown;
