@@ -1,0 +1,212 @@
+[
+  {
+    "id": "md.account_subscribe_is_a_pending_resource",
+    "rule": "Subscribing a symbol on a cTrader account sends its own symbol name with the idempotency key and returns the subscription at once, pending",
+    "source": "Market data",
+    "call": {
+      "op": "md.subscribe_account",
+      "args": {
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "symbol": "EURUSD",
+        "idempotency_key": "case-md-1"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/accounts/4c2d3e4f-5a6b-7c8d-9e0f-102030405060/md/subscriptions",
+          "headers": {
+            "Idempotency-Key": "case-md-1"
+          },
+          "json": {
+            "symbol": "EURUSD"
+          }
+        },
+        "answer": {
+          "status": 201,
+          "body": {
+            "id": "06abfa00-0000-7000-8000-0000000000a1",
+            "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+            "symbol": "EURUSD",
+            "state": "pending",
+            "created_at": "2026-11-12T09:00:00Z"
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "id": "06abfa00-0000-7000-8000-0000000000a1",
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "symbol": "EURUSD",
+        "state": "pending"
+      }
+    }
+  },
+  {
+    "id": "md.account_subscribe_refuses_an_mt5_account",
+    "rule": "Subscribing on an MT5 account is a state_error naming not_on_this_venue, and the write is not sent again",
+    "source": "Market data",
+    "call": {
+      "op": "md.subscribe_account",
+      "args": {
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "symbol": "EURUSD",
+        "idempotency_key": "case-md-2"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/accounts/4c2d3e4f-5a6b-7c8d-9e0f-102030405060/md/subscriptions"
+        },
+        "answer": {
+          "status": 409,
+          "body": {
+            "error": {
+              "code": "state_error",
+              "message": "an MT5 account streams its server",
+              "details": {
+                "reason": "not_on_this_venue"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "StateError",
+      "fields": {
+        "code": "state_error",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "md.account_subscriptions_follow_the_cursor",
+    "rule": "Listing an account's subscriptions follows next_cursor until it is null, one request a page",
+    "source": "Market data",
+    "call": {
+      "op": "md.account_subscriptions",
+      "args": {
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/accounts/4c2d3e4f-5a6b-7c8d-9e0f-102030405060/md/subscriptions"
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "items": [
+              {
+                "id": "06abfa00-0000-7000-8000-0000000000a1",
+                "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+                "symbol": "EURUSD",
+                "state": "pending",
+                "created_at": "2026-11-12T09:00:00Z"
+              }
+            ],
+            "next_cursor": "c-2",
+            "returned": 1
+          }
+        }
+      },
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/accounts/4c2d3e4f-5a6b-7c8d-9e0f-102030405060/md/subscriptions",
+          "query": {
+            "cursor": "c-2"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "items": [
+              {
+                "id": "06abfa00-0000-7000-8000-0000000000a2",
+                "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+                "symbol": "XAUUSD",
+                "state": "pending",
+                "created_at": "2026-11-12T09:00:00Z"
+              }
+            ],
+            "next_cursor": null,
+            "returned": 1
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "symbols": [
+          "EURUSD",
+          "XAUUSD"
+        ]
+      }
+    }
+  },
+  {
+    "id": "md.account_candles_are_read_by_account",
+    "rule": "Candles of a cTrader account are read with its symbol name and timeframe, oldest first, prices as exact decimals",
+    "source": "Market data",
+    "call": {
+      "op": "md.account_candles",
+      "args": {
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "symbol": "EURUSD",
+        "timeframe": "H1",
+        "from": "2026-11-12T09:00:00Z",
+        "to": "2026-11-12T11:00:00Z"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/accounts/4c2d3e4f-5a6b-7c8d-9e0f-102030405060/md/candles"
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "items": [
+              {
+                "ts": "2026-11-12T09:00:00Z",
+                "o": "1.158",
+                "h": "1.1592",
+                "l": "1.1575",
+                "c": "1.159",
+                "v": 812
+              },
+              {
+                "ts": "2026-11-12T10:00:00Z",
+                "o": "1.159",
+                "h": "1.1601",
+                "l": "1.1588",
+                "c": "1.1597",
+                "v": 640
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "count": 2,
+        "first_open": {
+          "$decimal": "1.158"
+        },
+        "last_close": {
+          "$decimal": "1.1597"
+        }
+      }
+    }
+  }
+]

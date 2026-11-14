@@ -412,7 +412,7 @@ export interface paths {
     put?: never;
     /**
      * Start connecting a trader's cTrader accounts; answers the consent URL to send them to
-     * @description The trader signs in at cTrader with their cTrader ID and chooses which of their accounts to share. MFX Hub never sees their password. After consent the trader is sent to `return_url` with `grant_id`, `result` and your `tenant_state`; then read the grant for the accounts it lists and choose which to connect. The consent link lives 15 minutes. A tenant whose plan does not include cTrader is 403 `feature_not_entitled`.
+     * @description The trader signs in at cTrader with their cTrader ID and chooses which of their accounts to share. MFX Hub never sees their password. After consent the trader is sent to `return_url` with `grant_id`, `result` and your `tenant_state`; then read the grant for the accounts it lists and choose which to connect. The consent link lives 15 minutes. A tenant whose plan does not include cTrader is 403 `feature_not_entitled`. A tenant whose cTrader MFX Hub has suspended or disabled is 403 `venue_suspended`.
      */
     post: operations["startCtraderGrant"];
     delete?: never;
@@ -457,7 +457,7 @@ export interface paths {
     put?: never;
     /**
      * Connect some of a grant's cTrader accounts to MFX Hub
-     * @description Each chosen account becomes a trading account of yours (`venue: ctrader`), PENDING until MFX Hub has authorised it at cTrader, then CONNECTED with an `account.connected` event. Choosing an account already connected answers it unchanged. A grant that is not ACTIVE is 409 `state_error`; an id the grant does not list is 422 `unprocessable`.
+     * @description Each chosen account becomes a trading account of yours (`venue: ctrader`), PENDING until MFX Hub has authorised it at cTrader, then CONNECTED with an `account.connected` event. Choosing an account already connected answers it unchanged. A grant that is not ACTIVE is 409 `state_error`; an id the grant does not list is 422 `unprocessable`. A tenant whose cTrader is suspended or disabled is 403 `venue_suspended`, and live accounts past the tenant's limit are 409 `quota_exceeded` with details {quota: live_accounts, limit, in_use}; nothing is connected then.
      */
     post: operations["connectCtraderAccounts"];
     delete?: never;
@@ -1720,7 +1720,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
-        id: components["parameters"]["terminalId"];
+        id: components["parameters"]["accountId"];
       };
       cookie?: never;
     };
@@ -1739,7 +1739,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
-        id: components["parameters"]["terminalId"];
+        id: components["parameters"]["accountId"];
       };
       cookie?: never;
     };
@@ -1758,7 +1758,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
-        id: components["parameters"]["terminalId"];
+        id: components["parameters"]["accountId"];
       };
       cookie?: never;
     };
@@ -1777,12 +1777,31 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
-        id: components["parameters"]["terminalId"];
+        id: components["parameters"]["accountId"];
       };
       cookie?: never;
     };
     /** The account's equity and balance series from the stored account reads (one a minute and on every change) */
     get: operations["getRiskEquity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/accounts/{id}/close-scope": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    /** The positions close_positions would close now on the account under a scope, before a rule that closes them is saved. Nothing is sent */
+    get: operations["getRiskAccountCloseScope"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1819,7 +1838,7 @@ export interface paths {
     put?: never;
     /**
      * Size a trade from a risk budget with the broker's specification and check it against every rule; nothing is sent to the broker
-     * @description Read-only: no Idempotency-Key. The volume is rounded down to the symbol's step and never enlarges the budget; when the symbol's minimum volume costs more than the budget no volume is offered (`reason: volume_min_over_budget`). A cost the specification does not give is 422 `validation_error` with `details.reason = assumption_required` until the caller states it. The answer expires at `expires_at` or when the price moves `risk.preview_max_move_points`.
+     * @description Read-only: no Idempotency-Key. The volume is rounded down to the symbol's step and never enlarges the budget; when the symbol's minimum volume costs more than the budget no volume is offered (`reason: volume_min_over_budget`). A cost the specification does not give is 422 `validation_error` with `details.reason = assumption_required` until the caller states it. The answer expires at `expires_at` or when the price moves `risk.preview_max_move_points`. Its `id` names it when the order is placed with its plan (`preview_id` on `POST /risk/plans`); MFX Hub keeps a preview until it expires and no longer.
      */
     post: operations["previewRiskPlan"];
     delete?: never;
@@ -1857,7 +1876,7 @@ export interface paths {
     put?: never;
     /**
      * An exit plan on an open position, or an order placed with its plan (checked as any entry; managing when the position opens)
-     * @description A position has one manager. A plan on a position that already has one (a plan or a standalone trailing stop) needs `replace: true`, or is 409 `conflict` with `details.reason = position_managed` and `details.manager`. A plan with a trailing step owns its trailing stop. With `order`, the answer carries the command that places it.
+     * @description A position has one manager. A plan on a position that already has one (a plan or a standalone trailing stop) needs `replace: true`, or is 409 `conflict` with `details.reason = position_managed` and `details.manager`. A plan with a trailing step owns its trailing stop. With `order` (a market order; another type is 400 `validation_error`, `details.reason = order_type`), the order is checked as any entry is (422 `risk_refused`, and the plan is kept `failed`, each step `skipped` naming the refusal) and placed; the answer carries the command that places it, and the plan is `draft` until the order's result names a position, then arms on that position's entry and stop. With `preview_id` as well, the order must be the one previewed (the same account, symbol, side, stop and volume, else 400 `validation_error`), and it is placed only while the price is within `risk.preview_max_move_points` (counted in the symbol's tick size) of the preview's and the preview has not expired: otherwise 409 `preview_moved` or `preview_expired`, nothing is placed, and the client previews again. A preview another tenant made, or one MFX Hub no longer holds, is `preview_expired`.
      */
     post: operations["createRiskPlan"];
     delete?: never;
@@ -2019,13 +2038,13 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/risk/challenges/{id}/accounts/{terminal_id}": {
+  "/risk/challenges/{id}/accounts/{account_id}": {
     parameters: {
       query?: never;
       header?: never;
       path: {
         id: components["parameters"]["pathId"];
-        terminal_id: string;
+        account_id: string;
       };
       cookie?: never;
     };
@@ -3251,6 +3270,11 @@ export interface components {
          */
         role: "writer" | "standby" | null;
       }[];
+      /**
+       * @description Whether MFX Hub has braked this venue for you. SUSPENDED: new orders and anything adding risk are refused 403 venue_suspended; closing, cancelling and tightening protection still work. DISABLED: every trading call is refused; reads work
+       * @enum {string}
+       */
+      venue_state?: "ENABLED" | "SUSPENDED" | "DISABLED";
       /** Format: date-time */
       created_at: string;
     };
@@ -6263,6 +6287,8 @@ export interface components {
       /** Format: date-time */
       created_at: string;
       reason: string | null;
+      /** @description Who made the version: key:<key id> for an API key, or the person or system that did */
+      created_by?: string;
     };
     RiskPolicyVersionPage: {
       items: components["schemas"]["RiskPolicyVersion"][];
@@ -6278,7 +6304,7 @@ export interface components {
       current_version: components["schemas"]["RiskPolicyVersion"];
       accounts: {
         /** Format: uuid */
-        terminal_id: string;
+        account_id: string;
         version: number;
         /** @enum {string} */
         state: "active" | "paused";
@@ -6292,7 +6318,7 @@ export interface components {
       returned?: number;
     };
     RiskActivate: {
-      terminal_ids: string[];
+      account_ids: string[];
       version: number;
       /** @description Needed for an account where the version relaxes the one in force */
       reason?: string | null;
@@ -6300,7 +6326,7 @@ export interface components {
     RiskActivationResult: {
       results: {
         /** Format: uuid */
-        terminal_id: string;
+        account_id: string;
         /** @enum {string} */
         outcome: "done" | "unchanged" | "refused";
         /** @description Why it was refused, as an error code: risk_override_required, not_found, quota_exceeded */
@@ -6364,7 +6390,7 @@ export interface components {
     };
     RiskAccount: {
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       policy: {
         /** Format: uuid */
         id: string;
@@ -6411,6 +6437,8 @@ export interface components {
         name: string;
         state: string;
       }[];
+      /** @description Its exit plans armed, managing or paused */
+      plans?: number;
     };
     RiskAccountPage: {
       stats: {
@@ -6421,6 +6449,12 @@ export interface components {
         degraded: number;
         actions_today: number;
         unresolved: number;
+        /** @description Accounts with a rule at its warn level, short of acting */
+        warnings?: number;
+        /** @description Exit plans armed, managing or paused, over every account */
+        active_plans?: number;
+        /** @description The open volume in lots over every account (gross exposure in money is per account, in its own currency) */
+        gross_exposure?: string;
       };
       items: components["schemas"]["RiskAccount"][];
       next_cursor: string | null;
@@ -6428,13 +6462,36 @@ export interface components {
     };
     RiskEquitySeries: {
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       currency: string | null;
       points: {
         /** Format: date-time */
         at: string;
         equity: string;
         balance: string;
+      }[];
+    };
+    /** @description The positions close_positions would close now on the account under one scope, from its last read. Nothing is sent */
+    RiskCloseScope: {
+      /** Format: uuid */
+      account_id: string;
+      /** @enum {string} */
+      scope: "mfx_positions" | "all_positions";
+      /**
+       * Format: date-time
+       * @description The account read the positions come from; null when there is none
+       */
+      read_at: string | null;
+      count: number;
+      positions: {
+        ticket: string;
+        symbol: string;
+        /** @enum {string} */
+        side: "buy" | "sell";
+        volume: string | null;
+        profit: string | null;
+        /** @description Opened by an order MFX Hub placed; mfx_positions reaches only these */
+        placed_by_mfx: boolean;
       }[];
     };
     RiskCoverageSummary: {
@@ -6446,7 +6503,7 @@ export interface components {
       };
       not_healthy: {
         /** Format: uuid */
-        terminal_id: string;
+        account_id: string;
         kind: string;
         state: string;
         reason: string | null;
@@ -6480,7 +6537,7 @@ export interface components {
     };
     RiskPreviewRequest: {
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       symbol: string;
       /** @enum {string} */
       side: "buy" | "sell";
@@ -6499,6 +6556,11 @@ export interface components {
       };
     };
     RiskPreview: {
+      /**
+       * Format: uuid
+       * @description Name it as preview_id to place this order with its plan (POST /risk/plans) before expires_at
+       */
+      id: string;
       /** @description Rounded down to the step; null when even the minimum is over the budget */
       volume: string | null;
       volume_unrounded: string | null;
@@ -6528,7 +6590,7 @@ export interface components {
     };
     RiskCheckRequest: {
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       order: components["schemas"]["RiskProposedOrder"];
     };
     RiskCheckResult: {
@@ -6606,10 +6668,15 @@ export interface components {
     };
     RiskPlanCreate: {
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       /** @description An open position; or give order */
       ticket?: string | null;
       order?: components["schemas"]["RiskProposedOrder"];
+      /**
+       * Format: uuid
+       * @description With order: the preview it was sized from. The order is placed only within risk.preview_max_move_points of the preview's price and before its expires_at
+       */
+      preview_id?: string | null;
       steps: components["schemas"]["RiskPlanStepSpec"][];
       /**
        * @description Take over a position another manager holds
@@ -6625,7 +6692,7 @@ export interface components {
       /** Format: uuid */
       id: string;
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       /** @description null until the order becomes a position */
       ticket: string | null;
       version: number;
@@ -6646,8 +6713,21 @@ export interface components {
       command_id: string | null;
       /** Format: date-time */
       created_at: string;
+      /** @description How many R the position is from its entry on its last read, in its favour, as the R triggers judge it; null when the plan manages no position now, has no 1R, or the position has no read */
+      r_now?: string | null;
     };
     RiskPlanPage: {
+      /** @description The filtered set */
+      stats?: {
+        plans: number;
+        draft: number;
+        armed: number;
+        managing: number;
+        paused: number;
+        completed: number;
+        failed: number;
+        ended: number;
+      };
       items: components["schemas"]["RiskPlan"][];
       next_cursor: string | null;
       returned?: number;
@@ -6715,11 +6795,11 @@ export interface components {
       returned?: number;
     };
     RiskEnrol: {
-      terminal_ids: string[];
+      account_ids: string[];
     };
     RiskChallengeAccount: {
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       version: number;
       /** @enum {string} */
       state: "in_progress" | "passed" | "failed" | "ended";
@@ -6728,9 +6808,13 @@ export interface components {
       /** Format: date-time */
       period_ends_at: string | null;
       start_balance: string;
+      /** @description Equity less the day's start equity on the account's last fresh read; null when decided, before its first day, or with no fresh read */
       day_pnl: string | null;
+      /** @description Percent of the daily loss limit used, as the challenge judges it; null when decided, before its first day, or with no fresh read */
       daily_loss_used: string | null;
+      /** @description Percent of the drawdown limit used (from the peak when trailing); null when decided or with no fresh read */
       drawdown_used: string | null;
+      /** @description Equity against the start balance, percent; null when decided or with no fresh read */
       profit_pct: string | null;
       trading_days: number;
       result: {
@@ -6763,7 +6847,7 @@ export interface components {
     };
     RiskChallengeAccountDetail: {
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       version: number;
       /** @enum {string} */
       state: "in_progress" | "passed" | "failed" | "ended";
@@ -6786,6 +6870,16 @@ export interface components {
       periods: components["schemas"]["RiskPeriod"][];
     };
     RiskChallengeAccountPage: {
+      /** @description Counts over the filtered set, before paging. events_today counts the challenge's Activity rows since 00:00 UTC. */
+      stats?: {
+        accounts: number;
+        in_progress: number;
+        passed: number;
+        failed: number;
+        ended: number;
+        below_min_days: number;
+        events_today: number;
+      };
       items: components["schemas"]["RiskChallengeAccount"][];
       next_cursor: string | null;
       returned?: number;
@@ -6815,7 +6909,7 @@ export interface components {
        * Format: uuid
        * @description null for a row about several accounts (a daily reset)
        */
-      terminal_id: string | null;
+      account_id: string | null;
       kind: components["schemas"]["RiskActivityKind"];
       rule: string | null;
       policy: {
@@ -6846,6 +6940,15 @@ export interface components {
       by: string | null;
     };
     RiskActivityPage: {
+      /** @description The filtered set */
+      stats?: {
+        rows: number;
+        unresolved: number;
+        /** @description Rows per kind, every kind named */
+        kinds: {
+          [key: string]: number;
+        };
+      };
       items: components["schemas"]["RiskActivity"][];
       next_cursor: string | null;
       returned?: number;
@@ -6854,7 +6957,7 @@ export interface components {
     RiskRuleEvent: {
       schema_version: string;
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       rule: string;
       /** Format: uuid */
       policy_id: string | null;
@@ -6888,12 +6991,12 @@ export interface components {
       state: "running" | "completed" | "partly" | "unresolved" | "failed";
       accounts: {
         /** Format: uuid */
-        terminal_id: string;
+        account_id: string;
         outcome: string;
       }[];
       unresolved: {
         /** Format: uuid */
-        terminal_id: string;
+        account_id: string;
         ticket: string;
         /** Format: uuid */
         command_id: string;
@@ -6906,7 +7009,7 @@ export interface components {
     RiskCoverageChanged: {
       schema_version: string;
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       /** @enum {string} */
       kind: "monitoring" | "pre_trade" | "broker_held" | "managed_actions";
       /** @enum {string} */
@@ -6923,7 +7026,7 @@ export interface components {
       /** Format: uuid */
       plan_id: string;
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       ticket: string | null;
       version: number;
       step: number | null;
@@ -6939,7 +7042,7 @@ export interface components {
     RiskPolicyActivated: {
       schema_version: string;
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       /** Format: uuid */
       policy_id: string | null;
       version: number | null;
@@ -6955,7 +7058,7 @@ export interface components {
       challenge_id: string;
       version: number;
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       /** @enum {string} */
       result: "passed" | "failed" | "ended";
       rule: string | null;
@@ -6968,7 +7071,7 @@ export interface components {
       /** Format: uuid */
       challenge_id: string;
       /** Format: uuid */
-      terminal_id: string;
+      account_id: string;
       period: components["schemas"]["RiskPeriod"];
       /** Format: date-time */
       at: string;
@@ -8460,7 +8563,7 @@ export interface operations {
           "application/json": components["schemas"]["CtraderGrantStarted"];
         };
       };
-      /** @description feature_not_entitled: the tenant's plan does not include cTrader */
+      /** @description feature_not_entitled: the tenant's plan does not include cTrader; venue_suspended: its cTrader is suspended or disabled */
       403: {
         headers: {
           [name: string]: unknown;
@@ -10415,6 +10518,8 @@ export interface operations {
         cursor?: components["parameters"]["cursor"];
         limit?: components["parameters"]["limit"];
         state?: "active" | "archived";
+        /** @description A cursor continues the order that issued it; another order refuses it (400) */
+        sort?: "newest" | "oldest";
       };
       header?: never;
       path?: never;
@@ -10600,9 +10705,11 @@ export interface operations {
       query?: {
         cursor?: components["parameters"]["cursor"];
         limit?: components["parameters"]["limit"];
-        coverage?: "healthy" | "degraded" | "disconnected" | "unknown" | "no_rules";
-        restriction?: "none" | "entries_blocked";
-        sort?: "daily_loss_used" | "drawdown_used" | "exposure" | "inputs_age";
+        /** @description Any of; repeat the parameter for several */
+        coverage?: ("healthy" | "degraded" | "disconnected" | "unknown" | "no_rules")[];
+        /** @description Any of; repeat the parameter for several */
+        restriction?: ("none" | "entries_blocked")[];
+        sort?: "daily_loss_used" | "drawdown_used" | "exposure" | "inputs_age" | "plans";
       };
       header?: never;
       path?: never;
@@ -10627,7 +10734,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        id: components["parameters"]["terminalId"];
+        id: components["parameters"]["accountId"];
       };
       cookie?: never;
     };
@@ -10653,7 +10760,7 @@ export interface operations {
         "Idempotency-Key": components["parameters"]["idempotencyKey"];
       };
       path: {
-        id: components["parameters"]["terminalId"];
+        id: components["parameters"]["accountId"];
       };
       cookie?: never;
     };
@@ -10683,7 +10790,7 @@ export interface operations {
         "Idempotency-Key": components["parameters"]["idempotencyKey"];
       };
       path: {
-        id: components["parameters"]["terminalId"];
+        id: components["parameters"]["accountId"];
       };
       cookie?: never;
     };
@@ -10714,7 +10821,7 @@ export interface operations {
       };
       header?: never;
       path: {
-        id: components["parameters"]["terminalId"];
+        id: components["parameters"]["accountId"];
       };
       cookie?: never;
     };
@@ -10727,6 +10834,31 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["RiskEquitySeries"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getRiskAccountCloseScope: {
+    parameters: {
+      query: {
+        scope: "mfx_positions" | "all_positions";
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["accountId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the positions it would close */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskCloseScope"];
         };
       };
       default: components["responses"]["Error"];
@@ -10808,8 +10940,12 @@ export interface operations {
       query?: {
         cursor?: components["parameters"]["cursor"];
         limit?: components["parameters"]["limit"];
-        terminal_id?: string;
-        state?: "draft" | "armed" | "managing" | "paused" | "completed" | "failed" | "ended";
+        /** @description Any of; repeat the parameter for several */
+        account_id?: string[];
+        /** @description Any of; repeat the parameter for several */
+        state?: ("draft" | "armed" | "managing" | "paused" | "completed" | "failed" | "ended")[];
+        /** @description A cursor continues the order that issued it; another order refuses it (400) */
+        sort?: "newest" | "oldest";
       };
       header?: never;
       path?: never;
@@ -10817,7 +10953,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description plans */
+      /** @description plans, the filtered set's stats first */
       200: {
         headers: {
           [name: string]: unknown;
@@ -11102,10 +11238,12 @@ export interface operations {
       query?: {
         cursor?: components["parameters"]["cursor"];
         limit?: components["parameters"]["limit"];
-        state?: "in_progress" | "passed" | "failed" | "ended";
-        /** @description the rule that failed it */
-        rule?: "daily_loss" | "max_drawdown";
+        /** @description Only accounts in these states (repeat the parameter for several) */
+        state?: ("in_progress" | "passed" | "failed" | "ended")[];
+        /** @description Only accounts failed on these rules (repeat the parameter for several) */
+        rule?: ("daily_loss" | "max_drawdown")[];
         below_min_days?: boolean;
+        /** @description The figure the list is ordered by: the largest first (period_ends_at the soonest first), accounts without the figure last, ties by enrolment. The cursor belongs to its sort. */
         sort?: "daily_loss_used" | "drawdown" | "profit" | "trading_days" | "period_ends_at";
       };
       header?: never;
@@ -11164,7 +11302,7 @@ export interface operations {
       header?: never;
       path: {
         id: components["parameters"]["pathId"];
-        terminal_id: string;
+        account_id: string;
       };
       cookie?: never;
     };
@@ -11188,10 +11326,14 @@ export interface operations {
         cursor?: components["parameters"]["cursor"];
         limit?: components["parameters"]["limit"];
         kind?: components["schemas"]["RiskActivityKind"][];
-        terminal_id?: string;
-        outcome?: components["schemas"]["RiskOutcome"];
+        /** @description Any of; repeat the parameter for several */
+        account_id?: string[];
+        /** @description Any of; repeat the parameter for several */
+        outcome?: components["schemas"]["RiskOutcome"][];
         from?: string;
         to?: string;
+        /** @description unresolved_first: the unresolved rows, then the rest, each newest first; newest and oldest: one run. A cursor continues the order that issued it; another order refuses it (400) */
+        sort?: "unresolved_first" | "newest" | "oldest";
       };
       header?: never;
       path?: never;

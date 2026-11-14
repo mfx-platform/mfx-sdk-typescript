@@ -79,8 +79,32 @@ def signature_problems(
     return out
 
 
+Query = dict[str, str | list[str]]
+
+
+def query_of(pairs: Any) -> Query:  # noqa: ANN401 - a multidict or a mapping
+    """A request's query as a case writes it: a parameter given once is its value, one repeated
+    (several values for one filter) the list of its values in order."""
+    out: Query = {}
+    for key in dict.fromkeys(pairs.keys()):
+        values = pairs.getall(key) if hasattr(pairs, "getall") else [pairs[key]]
+        out[key] = values[0] if len(values) == 1 else list(values)
+    return out
+
+
+def _expected_query(expect: dict[str, Any]) -> Query:
+    """A case's query in the same form: a list of one is that value."""
+    out: Query = {}
+    for key, value in expect.items():
+        if isinstance(value, list):
+            out[key] = str(value[0]) if len(value) == 1 else [str(v) for v in value]
+        else:
+            out[key] = str(value)
+    return out
+
+
 def request_problems(
-    expect: dict[str, Any], method: str, path: str, query: dict[str, str], headers: Any, body: bytes
+    expect: dict[str, Any], method: str, path: str, query: Query, headers: Any, body: bytes
 ) -> list[str]:  # noqa: ANN401
     """How a request differs from what a step expects; empty when it matches."""
     out: list[str] = []
@@ -88,7 +112,7 @@ def request_problems(
         out.append(f"method {method}, expected {expect['method']}")
     if path != expect.get("path", path):
         out.append(f"path {path}, expected {expect['path']}")
-    if "query" in expect and query != {k: str(v) for k, v in expect["query"].items()}:
+    if "query" in expect and query != _expected_query(expect["query"]):
         out.append(f"query {query}, expected {expect['query']}")
     for name, want in expect.get("headers", {}).items():
         got = headers.get(name)
@@ -151,7 +175,7 @@ class Hub:
         self,
         method: str,
         path: str,
-        query: dict[str, str],
+        query: Query,
         headers: Any,
         body: bytes,
         path_with_query: str,
@@ -240,7 +264,7 @@ def make_app(hub: Hub) -> web.Application:
         answer = hub.take(
             request.method,
             request.path,
-            dict(request.query),
+            query_of(request.query),
             request.headers,
             body,
             request.raw_path,

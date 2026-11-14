@@ -1,0 +1,388 @@
+[
+  {
+    "id": "risk.order_decimals_go_as_text",
+    "rule": "An order checked against the account's rules carries its volume as exact decimal text, never a float",
+    "source": "Risk Management",
+    "call": {
+      "op": "risk.check",
+      "args": {
+        "account_id": "0191f0c2-aaaa-7bbb-8ccc-0000000000a1",
+        "symbol": "EURUSD",
+        "side": "buy",
+        "volume": {
+          "$decimal": "0.40"
+        }
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/risk/planner/check",
+          "json": {
+            "account_id": "0191f0c2-aaaa-7bbb-8ccc-0000000000a1",
+            "order": {
+              "symbol": "EURUSD",
+              "side": "buy",
+              "type": "market",
+              "volume": "0.40"
+            }
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "verdict": "allow",
+            "reason": null,
+            "checks": []
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "verdict": "allow"
+      }
+    }
+  },
+  {
+    "id": "risk.float_volume_refused",
+    "rule": "A binary floating-point volume is refused before an order is checked",
+    "source": "Risk Management",
+    "call": {
+      "op": "risk.check",
+      "args": {
+        "account_id": "0191f0c2-aaaa-7bbb-8ccc-0000000000a1",
+        "symbol": "EURUSD",
+        "side": "buy",
+        "volume": {
+          "$float": 0.4
+        }
+      }
+    },
+    "server": [],
+    "observe": {
+      "refuses": "invalid_argument"
+    }
+  },
+  {
+    "id": "risk.refused_entry_names_its_rule",
+    "rule": "An entry a rule refuses is a ValidationError with code risk_refused whose details name the rule, the version and the figures as text",
+    "source": "Risk Management",
+    "call": {
+      "op": "risk.create_plan",
+      "args": {
+        "account_id": "0191f0c2-aaaa-7bbb-8ccc-0000000000a1",
+        "symbol": "EURUSD",
+        "side": "buy",
+        "volume": {
+          "$decimal": "0.40"
+        },
+        "idempotency_key": "case-plan-1"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/risk/plans",
+          "headers": {
+            "Idempotency-Key": "case-plan-1"
+          },
+          "json_contains": {
+            "account_id": "0191f0c2-aaaa-7bbb-8ccc-0000000000a1",
+            "order": {
+              "symbol": "EURUSD",
+              "side": "buy",
+              "type": "market",
+              "volume": "0.40"
+            }
+          }
+        },
+        "answer": {
+          "status": 422,
+          "body": {
+            "error": {
+              "code": "risk_refused",
+              "message": "the entry would pass the daily loss limit",
+              "details": {
+                "reason": "daily_loss_reached",
+                "rule": "daily_loss",
+                "policy_id": "0191f0c2-dddd-7eee-8fff-000000000001",
+                "version": 3,
+                "challenge_id": null,
+                "challenge_version": null,
+                "used": "240.00",
+                "limit": "300.00",
+                "would_be": "310.40"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "risk_refused",
+        "status": 422,
+        "details": {
+          "reason": "daily_loss_reached",
+          "rule": "daily_loss",
+          "policy_id": "0191f0c2-dddd-7eee-8fff-000000000001",
+          "version": 3,
+          "challenge_id": null,
+          "challenge_version": null,
+          "used": "240.00",
+          "limit": "300.00",
+          "would_be": "310.40"
+        }
+      }
+    }
+  },
+  {
+    "id": "risk.policy_create_sends_its_key",
+    "rule": "Creating a policy sends its rules as given, with the idempotency key as the Idempotency-Key header",
+    "source": "Risk Management",
+    "call": {
+      "op": "risk.create_policy",
+      "args": {
+        "name": "Funded account",
+        "rules": {
+          "daily_loss": {
+            "limit": {
+              "pct": "5"
+            },
+            "basis": "start_balance",
+            "warn_at": {
+              "pct": "4"
+            },
+            "act_at": {
+              "pct": "5"
+            },
+            "check_entries": true,
+            "actions": {
+              "kinds": [
+                "notify",
+                "block_entries"
+              ]
+            }
+          }
+        },
+        "reset": {
+          "zone": "broker"
+        },
+        "idempotency_key": "case-policy-1"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/risk/policies",
+          "headers": {
+            "Idempotency-Key": "case-policy-1"
+          },
+          "json": {
+            "name": "Funded account",
+            "rules": {
+              "daily_loss": {
+                "limit": {
+                  "pct": "5"
+                },
+                "basis": "start_balance",
+                "warn_at": {
+                  "pct": "4"
+                },
+                "act_at": {
+                  "pct": "5"
+                },
+                "check_entries": true,
+                "actions": {
+                  "kinds": [
+                    "notify",
+                    "block_entries"
+                  ]
+                }
+              }
+            },
+            "reset": {
+              "zone": "broker"
+            }
+          }
+        },
+        "answer": {
+          "status": 201,
+          "body": {
+            "$fixture": "risk_policy"
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "id": "0191f0c2-dddd-7eee-8fff-000000000001",
+        "version": 1
+      }
+    }
+  },
+  {
+    "id": "risk.policy_create_never_retried",
+    "rule": "A policy create that fails is not sent again: one request, the failure raised",
+    "source": "Risk Management",
+    "call": {
+      "op": "risk.create_policy",
+      "args": {
+        "name": "Funded account",
+        "rules": {
+          "daily_loss": {
+            "limit": {
+              "pct": "5"
+            },
+            "basis": "start_balance",
+            "warn_at": {
+              "pct": "4"
+            },
+            "act_at": {
+              "pct": "5"
+            },
+            "check_entries": true,
+            "actions": {
+              "kinds": [
+                "notify",
+                "block_entries"
+              ]
+            }
+          }
+        },
+        "reset": {
+          "zone": "broker"
+        },
+        "idempotency_key": "case-policy-2"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/risk/policies",
+          "headers": {
+            "Idempotency-Key": "case-policy-2"
+          }
+        },
+        "answer": {
+          "status": 503,
+          "headers": {
+            "Retry-After": "0"
+          },
+          "body": {
+            "error": {
+              "code": "dependency_unavailable",
+              "message": "try again"
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "DependencyUnavailableError"
+    }
+  },
+  {
+    "id": "risk.challenge_accounts_follow_their_sort",
+    "rule": "A challenge's accounts, filtered by several states and sorted by a figure, follow next_cursor with the same filters and sort on every page",
+    "source": "Risk Management",
+    "call": {
+      "op": "risk.challenge_accounts",
+      "args": {
+        "challenge_id": "0191f0c2-cccc-7ddd-8eee-000000000001",
+        "state": [
+          "in_progress",
+          "passed"
+        ],
+        "sort": "profit"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/risk/challenges/0191f0c2-cccc-7ddd-8eee-000000000001/accounts",
+          "query": {
+            "state": [
+              "in_progress",
+              "passed"
+            ],
+            "sort": "profit"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "accounts": 2,
+              "in_progress": 2,
+              "passed": 0,
+              "failed": 0,
+              "ended": 0,
+              "below_min_days": 0,
+              "events_today": 0
+            },
+            "items": [
+              {
+                "$fixture": "risk_challenge_account",
+                "account_id": "0191f0c2-dddd-7eee-8fff-0000000000b1"
+              }
+            ],
+            "next_cursor": "k-2",
+            "returned": 1
+          }
+        }
+      },
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/risk/challenges/0191f0c2-cccc-7ddd-8eee-000000000001/accounts",
+          "query": {
+            "state": [
+              "in_progress",
+              "passed"
+            ],
+            "sort": "profit",
+            "cursor": "k-2"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "accounts": 2,
+              "in_progress": 2,
+              "passed": 0,
+              "failed": 0,
+              "ended": 0,
+              "below_min_days": 0,
+              "events_today": 0
+            },
+            "items": [
+              {
+                "$fixture": "risk_challenge_account",
+                "account_id": "0191f0c2-dddd-7eee-8fff-0000000000b2"
+              }
+            ],
+            "next_cursor": null,
+            "returned": 1
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "ids": [
+          "0191f0c2-dddd-7eee-8fff-0000000000b1",
+          "0191f0c2-dddd-7eee-8fff-0000000000b2"
+        ]
+      }
+    }
+  }
+]

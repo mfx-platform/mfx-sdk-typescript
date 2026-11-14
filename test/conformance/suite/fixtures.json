@@ -1,13 +1,24 @@
 {
   "terminal": {
     "id": "0191f0c2-aaaa-7bbb-8ccc-000000000001",
-    "farm": {"id": "1c2d3e4f-5a6b-7c8d-9e0f-102030405060", "label": "test-farm"},
-    "broker": {"id": "2c2d3e4f-5a6b-7c8d-9e0f-102030405060", "label": "Test Broker"},
-    "server": {"id": "3c2d3e4f-5a6b-7c8d-9e0f-102030405060", "label": "TestBroker-Demo"},
+    "farm": {
+      "id": "1c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+      "label": "test-farm"
+    },
+    "broker": {
+      "id": "2c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+      "label": "Test Broker"
+    },
+    "server": {
+      "id": "3c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+      "label": "TestBroker-Demo"
+    },
     "streaming": false,
     "execution": true,
     "state": "ACTIVE",
-    "instruments": ["EURUSD"],
+    "instruments": [
+      "EURUSD"
+    ],
     "created_at": "2026-10-23T09:00:00Z"
   },
   "accepted": {
@@ -43,12 +54,49 @@
       "retcode_text": "Request completed",
       "comment_raw": "Request executed",
       "terminal_state": "ACTIVE",
-      "tickets": {"order": 30551, "deal": 30552, "position": 30551},
+      "tickets": {
+        "order": 30551,
+        "deal": 30552,
+        "position": 30551
+      },
       "exec_price": "1.12181",
       "exec_volume": "0.01",
       "broker_latency_ms": 41,
       "agent_latency_ms": 3,
       "attempts": 1
     }
+  },
+  "risk_policy": {
+    "id": "0191f0c2-dddd-7eee-8fff-000000000001",
+    "name": "Funded account",
+    "state": "active",
+    "current_version": {
+      "policy_id": "0191f0c2-dddd-7eee-8fff-000000000001",
+      "version": 1,
+      "rules": {},
+      "reset": {
+        "zone": "broker"
+      },
+      "relaxes": false,
+      "changes": [],
+      "created_at": "2026-11-14T12:00:00Z",
+      "reason": null
+    },
+    "accounts": [],
+    "created_at": "2026-11-14T12:00:00Z"
+  },
+  "risk_challenge_account": {
+    "account_id": "0191f0c2-dddd-7eee-8fff-000000000001",
+    "version": 1,
+    "state": "in_progress",
+    "started_at": "2026-11-14T12:00:00Z",
+    "period_ends_at": "2026-12-14T12:00:00Z",
+    "start_balance": "100000",
+    "day_pnl": "1",
+    "daily_loss_used": "1",
+    "drawdown_used": "1",
+    "profit_pct": "6.1",
+    "trading_days": 1,
+    "result": null
   }
 }

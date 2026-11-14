@@ -44,11 +44,13 @@
       "note": "one page; count is the number of items in it"
     },
     "terminals.list": {
-      "args": [],
+      "args": [
+        "limit?"
+      ],
       "returns": [
         "ids"
       ],
-      "note": "every terminal, following the cursor; ids in order"
+      "note": "every terminal, following the cursor; ids in order. limit is the page size the SDK asks for, so a small one makes it follow the cursor"
     },
     "terminals.create": {
       "args": [
@@ -85,7 +87,8 @@
     "catalog.quote": {
       "args": [
         "broker_id",
-        "symbol"
+        "symbol",
+        "server_id?"
       ],
       "returns": [
         "bid",
@@ -120,6 +123,93 @@
         "reconnects"
       ],
       "note": "open the stream against the fake hub (reconnecting allowed, no real wait between attempts) and subscribe each channel in order. Start a read for the next message and leave it waiting while the hub sends nothing more (give it a moment, 100 ms). Close the stream. ended is true when the waiting read finished within 2 s with no message and no error; reconnects is the stream's count of connections after the first, which closing must leave at 0"
+    },
+    "md.subscribe_account": {
+      "args": [
+        "account_id",
+        "symbol",
+        "idempotency_key"
+      ],
+      "returns": [
+        "id",
+        "account_id",
+        "symbol",
+        "state"
+      ],
+      "note": "a cTrader account's market-data subscription; state is the word the API sends (pending until the first spot)"
+    },
+    "md.account_subscriptions": {
+      "args": [
+        "account_id"
+      ],
+      "returns": [
+        "symbols"
+      ],
+      "note": "follow next_cursor to the end; symbols is every subscription's symbol, in the order served"
+    },
+    "md.account_candles": {
+      "args": [
+        "account_id",
+        "symbol",
+        "timeframe",
+        "from",
+        "to"
+      ],
+      "returns": [
+        "count",
+        "first_open",
+        "last_close"
+      ],
+      "note": "from and to are ISO 8601 instants; count is the number of bars, and first_open and last_close are the first bar's open and the last bar's close (a $decimal compares as a decimal)"
+    },
+    "risk.check": {
+      "args": [
+        "account_id",
+        "symbol",
+        "side",
+        "volume"
+      ],
+      "returns": [
+        "verdict"
+      ],
+      "note": "check a market order already sized against the account's rules (client.risk.check); nothing is sent to the broker"
+    },
+    "risk.create_plan": {
+      "args": [
+        "account_id",
+        "symbol",
+        "side",
+        "volume",
+        "idempotency_key"
+      ],
+      "returns": [
+        "id"
+      ],
+      "note": "an exit plan placed with its market order and one step: at 1R close half, held by MFX Hub ({trigger: {kind: r, value: \"1\"}, action: {kind: close_part, pct: \"50\"}, held_by: mfx})"
+    },
+    "risk.create_policy": {
+      "args": [
+        "name",
+        "rules",
+        "reset",
+        "idempotency_key"
+      ],
+      "returns": [
+        "id",
+        "version"
+      ],
+      "note": "rules and reset are passed as given; version is the policy's current version"
+    },
+    "risk.challenge_accounts": {
+      "args": [
+        "challenge_id",
+        "state",
+        "sort"
+      ],
+      "returns": [
+        "ids"
+      ],
+      "note": "every account of the challenge, following the cursor; state is a list sent as repeated parameters; ids are the account ids in order"
     }
   },
   "markers": {
@@ -151,5 +241,31 @@
     "InternalError",
     "TransportError",
     "Timeout"
-  ]
+  ],
+  "live": {
+    "about": "Cases in live/ run against a real MFX Hub, not the fake one: no case scripts the hub's answer, so each holds a rule a real hub shows on its own. They run with the caller's own key, on a terminal that is logged in, and send at most one market order of the smallest volume, which the runner closes.",
+    "run": {
+      "terminal_id": "the run's terminal, logged in to a demo account",
+      "broker_id": "that terminal's broker",
+      "server_id": "that terminal's broker server",
+      "symbol": "a symbol that server lists and quotes",
+      "md_channel": "the ticks channel of symbol on server_id, as the SDK names it",
+      "min_volume": "the symbol's smallest volume, as an exact decimal",
+      "unused_id": "a new UUID no terminal has, made fresh for the case",
+      "new_key": "a new idempotency key, made fresh for the case"
+    },
+    "case": {
+      "client": "test_key: build the client with the suite's test key instead of the caller's own. Absent: the caller's own key",
+      "needs": "market: the case needs a market that is quoting. When the market does not answer in time the case is skipped, not failed"
+    },
+    "observe": {
+      "returns": "as for the fake hub; a {\"$run\": name} value is that run value",
+      "raises": "as for the fake hub",
+      "refuses": "as for the fake hub",
+      "includes": "the call returned; each named list field includes the value",
+      "exact": "the call returned; each named field is exact: the language's decimal type or the decimal string the SDK keeps it as, never a binary float, and greater than zero",
+      "ascending": "the call returned; the named list rises strictly. Combined with returns, both hold",
+      "repeat": "make the call twice with the same arguments, idempotency key included. The second returns as repeat.returns says, and each field in repeat.same equals the first call's. Close any position either call opened"
+    }
+  }
 }

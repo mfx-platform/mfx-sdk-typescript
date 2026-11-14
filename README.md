@@ -65,6 +65,7 @@ logged in to.
 | Execution | `placeOrder` and `getCommand`, with `ExecutionResult` for every outcome               |
 | Catalogue | `quote`                                                                               |
 | Stream    | `client.stream()`: events, results, account, ticks, candles, book and expert channels |
+| Risk      | `client.risk`: policies, accounts, the planner, exit plans, challenges and activity   |
 
 Submitting a terminal's login, farms, account reads, market-data subscriptions and the rest of
 order management are next. Until then the [Python SDK](https://github.com/mfx-platform/mfx-sdk-python)

@@ -193,6 +193,41 @@ async function call(
       last_close: bars.items.at(-1)?.c ?? null,
     };
   }
+  if (op === "risk.check") {
+    const order = { symbol: a.symbol, side: a.side, type: "market", volume: a.volume } as never;
+    const checked = await client.risk.check(String(a.account_id), order);
+    return { verdict: checked.verdict };
+  }
+  if (op === "risk.create_plan") {
+    const order = { symbol: a.symbol, side: a.side, type: "market", volume: a.volume };
+    const step = {
+      trigger: { kind: "r", value: "1" },
+      action: { kind: "close_part", pct: "50" },
+      held_by: "mfx",
+    };
+    const plan = await client.risk.createPlan(
+      { account_id: a.account_id, order, steps: [step] } as never,
+      { idempotencyKey: String(a.idempotency_key) },
+    );
+    return { id: plan.id };
+  }
+  if (op === "risk.create_policy") {
+    const policy = await client.risk.createPolicy(String(a.name), a.rules as never, {
+      reset: a.reset as never,
+      idempotencyKey: String(a.idempotency_key),
+    });
+    return { id: policy.id, version: policy.current_version.version };
+  }
+  if (op === "risk.challenge_accounts") {
+    const ids: string[] = [];
+    for await (const account of client.risk.challengeAccounts(String(a.challenge_id), {
+      state: a.state as never,
+      sort: a.sort as never,
+    })) {
+      ids.push(account.account_id);
+    }
+    return { ids };
+  }
   if (op in VOCABULARY.ops) throw new NotYet(`this SDK has no ${op} yet`);
   throw new Error(`this runner does not know the operation ${JSON.stringify(op)}`);
 }

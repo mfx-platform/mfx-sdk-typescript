@@ -66,13 +66,16 @@ tags:
     the actions the tenant authorised (risk:read / risk:write / risk:override). MFX Hub recommends no
     setting and no trade.
 
+    **Accounts, on any venue.** Every route, body and event here names the account `account_id`,
+    the id `GET /accounts` lists, on MT5 and cTrader alike.
+
     **Thresholds, not caps.** A loss limit is a threshold you set, not a guaranteed cap: the broker
     fills a stop at the price it gets, and a gap, slippage or a slow broker can take an account past
     a limit before an action completes. **Only orders sent through MFX Hub can be refused before the
     broker.** Orders from the broker's app, a web terminal, an expert advisor or another application
     are seen in the next account read and can only be reacted to. **Held by the broker or by MFX.**
     Every exit-plan step says which: a broker-held step survives MFX Hub being down; an MFX-held step
-    needs the cell and the terminal running.
+    needs MFX Hub and the account's connection running.
 
     **The pre-trade check.** An entry (`placeOrder`) on an account with an active policy or an
     enrolled challenge is checked before its command exists. A refusal is 422 `risk_refused` with
@@ -80,7 +83,7 @@ tags:
     `risk_entries_blocked`, `risk_daily_loss`, `risk_drawdown`, `risk_exposure_gross`,
     `risk_exposure_symbol`, `risk_open_count`, `risk_loss_at_stops`, `risk_no_stop`,
     `risk_outside_schedule`, `risk_inputs_stale` and `risk_check_unavailable`. Nothing is sent to the
-    terminal. A close, a partial close, a close-by, a cancel and a trailing stop are never refused
+    broker. A close, a partial close, a close-by, a cancel and a trailing stop are never refused
     by a rule, even on stale inputs. A repeated Idempotency-Key returns the original command before
     any rule is checked.
 
@@ -243,6 +246,21 @@ x-error-catalogue:
     cause: 'The tenant''s plan does not include this feature, or this part of it: details.feature, and
       details.part where a feature has parts.'
     action: Ask MFX Hub to add it to the plan. Nothing was changed.
+  - code: preview_moved
+    kind: http
+    status: 409
+    retryable: false
+    cause: An order placed with its plan named a preview, and the price has moved more than risk.preview_max_move_points
+      from the one the preview was sized at. Nothing was placed.
+    action: 'Preview again and place the order with the new preview: the volume is never resized without
+      you seeing it.'
+  - code: preview_expired
+    kind: http
+    status: 409
+    retryable: false
+    cause: An order placed with its plan named a preview that has expired (expires_at has passed) or that
+      MFX Hub does not hold. Nothing was placed.
+    action: Preview again and place the order with the new preview before its expires_at.
   - code: risk_override_required
     kind: http
     status: 403
@@ -380,6 +398,13 @@ x-error-catalogue:
     retryable: false
     cause: The operator has disabled the terminal's farm.
     action: Contact the operator; do not retry.
+  - code: venue_suspended
+    kind: http
+    status: 403
+    retryable: false
+    cause: 'MFX Hub has suspended or disabled your account''s venue: suspended refuses what adds risk,
+      disabled every trading call (details.state).'
+    action: Contact MFX Hub; while suspended you may still close, cancel and tighten protection.
   - code: maintenance
     kind: http
     status: 403
@@ -570,6 +595,13 @@ x-error-catalogue:
     retryable: true
     cause: The broker requoted the price.
     action: Send the order again under a new Idempotency-Key at the current price.
+  - code: venue_suspended
+    kind: command
+    status: null
+    retryable: false
+    cause: The account's venue was suspended or disabled after the command was queued, and the command
+      is one it refuses.
+    action: Read the account's venue_state; send it again only once the venue is enabled.
   - code: instrument_disabled
     kind: command
     status: null
@@ -805,6 +837,18 @@ x-error-catalogue:
     retryable: false
     cause: The terminal's deal history could not be read.
     action: Ask again later.
+  - code: bars_unreadable
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal could not read the symbol's bars for the window.
+    action: Ask again later; if it persists for a symbol, report it with the symbol and window.
+  - code: ticks_unreadable
+    kind: command
+    status: null
+    retryable: false
+    cause: The terminal could not read the symbol's ticks for the window.
+    action: Ask again later; if it persists for a symbol, report it with the symbol and window.
   - code: maintenance
     kind: command
     status: null
@@ -1000,6 +1044,10 @@ components:
               has the reason, the rule, the figure, its limit and what the entry would have made it
             feature_not_entitled: 403. The tenant's plan does not include this feature, or this part of
               it; `details.feature` and `details.part`
+            preview_moved: 409. The price moved past the preview's limit before the order placed with
+              its plan; nothing was placed. Preview again
+            preview_expired: 409. The preview an order placed with its plan named has expired; nothing
+              was placed. Preview again
             risk_override_required: 403. The request relaxes Risk Management's protection and needs a
               key with `risk:override` and a `reason`
             placement_error: 409. The terminal cannot be placed
@@ -1041,6 +1089,8 @@ components:
               it no depth limit'
             tenant_disabled: 403. The operator has disabled the tenant
             tenant_suspended: 403. The tenant is suspended and this is not a read inside its grace
+            venue_suspended: 403. The account's venue is suspended or disabled for this tenant; `details.venue`,
+              `details.state` (SUSPENDED or DISABLED), `details.since`, `details.reason`
             operation_in_progress: 409. Another lifecycle operation is running on the terminal
             positions_open: 409. The terminal has open positions; send `confirm_open_positions`
             superseded_by_waiting: 409. A stronger operation is already waiting for the terminal; `details.operation_id`
@@ -2146,6 +2196,15 @@ components:
                 - standby
                 - null
                 description: With HA, which terminal places orders; null without HA
+        venue_state:
+          type: string
+          enum:
+          - ENABLED
+          - SUSPENDED
+          - DISABLED
+          description: 'Whether MFX Hub has braked this venue for you. SUSPENDED: new orders and anything
+            adding risk are refused 403 venue_suspended; closing, cancelling and tightening protection
+            still work. DISABLED: every trading call is refused; reads work'
         created_at:
           type: string
           format: date-time
@@ -8455,6 +8514,10 @@ components:
           type:
           - string
           - 'null'
+        created_by:
+          type: string
+          description: 'Who made the version: key:<key id> for an API key, or the person or system that
+            did'
     RiskPolicyVersionPage:
       type: object
       required:
@@ -8498,11 +8561,11 @@ components:
           items:
             type: object
             required:
-            - terminal_id
+            - account_id
             - version
             - state
             properties:
-              terminal_id:
+              account_id:
                 type: string
                 format: uuid
               version:
@@ -8534,10 +8597,10 @@ components:
     RiskActivate:
       type: object
       required:
-      - terminal_ids
+      - account_ids
       - version
       properties:
-        terminal_ids:
+        account_ids:
           type: array
           minItems: 1
           maxItems: 500
@@ -8564,11 +8627,11 @@ components:
           items:
             type: object
             required:
-            - terminal_id
+            - account_id
             - outcome
             - reason
             properties:
-              terminal_id:
+              account_id:
                 type: string
                 format: uuid
               outcome:
@@ -8760,7 +8823,7 @@ components:
     RiskAccount:
       type: object
       required:
-      - terminal_id
+      - account_id
       - policy
       - activation_state
       - daily_loss
@@ -8772,7 +8835,7 @@ components:
       - inputs
       - challenges
       properties:
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         policy:
@@ -8908,6 +8971,9 @@ components:
                 type: string
               state:
                 type: string
+        plans:
+          type: integer
+          description: Its exit plans armed, managing or paused
     RiskAccountPage:
       type: object
       required:
@@ -8938,6 +9004,16 @@ components:
               type: integer
             unresolved:
               type: integer
+            warnings:
+              type: integer
+              description: Accounts with a rule at its warn level, short of acting
+            active_plans:
+              type: integer
+              description: Exit plans armed, managing or paused, over every account
+            gross_exposure:
+              type: string
+              description: The open volume in lots over every account (gross exposure in money is per
+                account, in its own currency)
         items:
           type: array
           items:
@@ -8951,11 +9027,11 @@ components:
     RiskEquitySeries:
       type: object
       required:
-      - terminal_id
+      - account_id
       - currency
       - points
       properties:
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         currency:
@@ -8978,6 +9054,65 @@ components:
                 type: string
               balance:
                 type: string
+    RiskCloseScope:
+      type: object
+      description: The positions close_positions would close now on the account under one scope, from
+        its last read. Nothing is sent
+      required:
+      - account_id
+      - scope
+      - read_at
+      - count
+      - positions
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        scope:
+          type: string
+          enum:
+          - mfx_positions
+          - all_positions
+        read_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: The account read the positions come from; null when there is none
+        count:
+          type: integer
+        positions:
+          type: array
+          items:
+            type: object
+            required:
+            - ticket
+            - symbol
+            - side
+            - volume
+            - profit
+            - placed_by_mfx
+            properties:
+              ticket:
+                type: string
+              symbol:
+                type: string
+              side:
+                type: string
+                enum:
+                - buy
+                - sell
+              volume:
+                type:
+                - string
+                - 'null'
+              profit:
+                type:
+                - string
+                - 'null'
+              placed_by_mfx:
+                type: boolean
+                description: Opened by an order MFX Hub placed; mfx_positions reaches only these
     RiskCoverageSummary:
       type: object
       required:
@@ -8997,12 +9132,12 @@ components:
           items:
             type: object
             required:
-            - terminal_id
+            - account_id
             - kind
             - state
             - reason
             properties:
-              terminal_id:
+              account_id:
                 type: string
                 format: uuid
               kind:
@@ -9103,14 +9238,14 @@ components:
     RiskPreviewRequest:
       type: object
       required:
-      - terminal_id
+      - account_id
       - symbol
       - side
       - entry_type
       - sl
       - budget
       properties:
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         symbol:
@@ -9155,6 +9290,7 @@ components:
     RiskPreview:
       type: object
       required:
+      - id
       - volume
       - volume_unrounded
       - reason
@@ -9172,6 +9308,11 @@ components:
       - inputs
       - expires_at
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Name it as preview_id to place this order with its plan (POST /risk/plans) before
+            expires_at
         volume:
           type:
           - string
@@ -9252,10 +9393,10 @@ components:
     RiskCheckRequest:
       type: object
       required:
-      - terminal_id
+      - account_id
       - order
       properties:
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         order:
@@ -9468,10 +9609,10 @@ components:
     RiskPlanCreate:
       type: object
       required:
-      - terminal_id
+      - account_id
       - steps
       properties:
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         ticket:
@@ -9482,6 +9623,13 @@ components:
           description: An open position; or give order
         order:
           $ref: '#/components/schemas/RiskProposedOrder'
+        preview_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: 'With order: the preview it was sized from. The order is placed only within risk.preview_max_move_points
+            of the preview''s price and before its expires_at'
         steps:
           type: array
           minItems: 1
@@ -9512,7 +9660,7 @@ components:
       type: object
       required:
       - id
-      - terminal_id
+      - account_id
       - ticket
       - version
       - state
@@ -9527,7 +9675,7 @@ components:
         id:
           type: string
           format: uuid
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         ticket:
@@ -9583,12 +9731,48 @@ components:
         created_at:
           type: string
           format: date-time
+        r_now:
+          type:
+          - string
+          - 'null'
+          description: How many R the position is from its entry on its last read, in its favour, as the
+            R triggers judge it; null when the plan manages no position now, has no 1R, or the position
+            has no read
     RiskPlanPage:
       type: object
       required:
       - items
       - next_cursor
       properties:
+        stats:
+          type: object
+          description: The filtered set
+          required:
+          - plans
+          - draft
+          - armed
+          - managing
+          - paused
+          - completed
+          - failed
+          - ended
+          properties:
+            plans:
+              type: integer
+            draft:
+              type: integer
+            armed:
+              type: integer
+            managing:
+              type: integer
+            paused:
+              type: integer
+            completed:
+              type: integer
+            failed:
+              type: integer
+            ended:
+              type: integer
         items:
           type: array
           items:
@@ -9751,9 +9935,9 @@ components:
     RiskEnrol:
       type: object
       required:
-      - terminal_ids
+      - account_ids
       properties:
-        terminal_ids:
+        account_ids:
           type: array
           minItems: 1
           maxItems: 500
@@ -9764,7 +9948,7 @@ components:
     RiskChallengeAccount:
       type: object
       required:
-      - terminal_id
+      - account_id
       - version
       - state
       - started_at
@@ -9777,7 +9961,7 @@ components:
       - trading_days
       - result
       properties:
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         version:
@@ -9803,18 +9987,25 @@ components:
           type:
           - string
           - 'null'
+          description: Equity less the day's start equity on the account's last fresh read; null when
+            decided, before its first day, or with no fresh read
         daily_loss_used:
           type:
           - string
           - 'null'
+          description: Percent of the daily loss limit used, as the challenge judges it; null when decided,
+            before its first day, or with no fresh read
         drawdown_used:
           type:
           - string
           - 'null'
+          description: Percent of the drawdown limit used (from the peak when trailing); null when decided
+            or with no fresh read
         profit_pct:
           type:
           - string
           - 'null'
+          description: Equity against the start balance, percent; null when decided or with no fresh read
         trading_days:
           type: integer
         result:
@@ -9908,7 +10099,7 @@ components:
     RiskChallengeAccountDetail:
       type: object
       required:
-      - terminal_id
+      - account_id
       - version
       - state
       - started_at
@@ -9922,7 +10113,7 @@ components:
       - result
       - periods
       properties:
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         version:
@@ -9988,6 +10179,33 @@ components:
       - items
       - next_cursor
       properties:
+        stats:
+          type: object
+          description: Counts over the filtered set, before paging. events_today counts the challenge's
+            Activity rows since 00:00 UTC.
+          required:
+          - accounts
+          - in_progress
+          - passed
+          - failed
+          - ended
+          - below_min_days
+          - events_today
+          properties:
+            accounts:
+              type: integer
+            in_progress:
+              type: integer
+            passed:
+              type: integer
+            failed:
+              type: integer
+            ended:
+              type: integer
+            below_min_days:
+              type: integer
+            events_today:
+              type: integer
         items:
           type: array
           items:
@@ -10027,7 +10245,7 @@ components:
       required:
       - id
       - at
-      - terminal_id
+      - account_id
       - kind
       - rule
       - policy
@@ -10045,7 +10263,7 @@ components:
         at:
           type: string
           format: date-time
-        terminal_id:
+        account_id:
           type:
           - string
           - 'null'
@@ -10128,6 +10346,23 @@ components:
       - items
       - next_cursor
       properties:
+        stats:
+          type: object
+          description: The filtered set
+          required:
+          - rows
+          - unresolved
+          - kinds
+          properties:
+            rows:
+              type: integer
+            unresolved:
+              type: integer
+            kinds:
+              type: object
+              description: Rows per kind, every kind named
+              additionalProperties:
+                type: integer
         items:
           type: array
           items:
@@ -10143,7 +10378,7 @@ components:
       description: '`data` of `risk.rule_warning`, `risk.rule_breached` and `risk.rule_cleared`'
       required:
       - schema_version
-      - terminal_id
+      - account_id
       - rule
       - policy_id
       - version
@@ -10155,7 +10390,7 @@ components:
       properties:
         schema_version:
           type: string
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         rule:
@@ -10242,10 +10477,10 @@ components:
           items:
             type: object
             required:
-            - terminal_id
+            - account_id
             - outcome
             properties:
-              terminal_id:
+              account_id:
                 type: string
                 format: uuid
               outcome:
@@ -10255,11 +10490,11 @@ components:
           items:
             type: object
             required:
-            - terminal_id
+            - account_id
             - ticket
             - command_id
             properties:
-              terminal_id:
+              account_id:
                 type: string
                 format: uuid
               ticket:
@@ -10279,7 +10514,7 @@ components:
       description: '`data` of `risk.coverage_changed`'
       required:
       - schema_version
-      - terminal_id
+      - account_id
       - kind
       - from
       - to
@@ -10288,7 +10523,7 @@ components:
       properties:
         schema_version:
           type: string
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         kind:
@@ -10325,7 +10560,7 @@ components:
       required:
       - schema_version
       - plan_id
-      - terminal_id
+      - account_id
       - ticket
       - version
       - step
@@ -10339,7 +10574,7 @@ components:
         plan_id:
           type: string
           format: uuid
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         ticket:
@@ -10388,7 +10623,7 @@ components:
         ended'
       required:
       - schema_version
-      - terminal_id
+      - account_id
       - policy_id
       - version
       - previous_version
@@ -10397,7 +10632,7 @@ components:
       properties:
         schema_version:
           type: string
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         policy_id:
@@ -10425,7 +10660,7 @@ components:
       - schema_version
       - challenge_id
       - version
-      - terminal_id
+      - account_id
       - result
       - rule
       - at
@@ -10437,7 +10672,7 @@ components:
           format: uuid
         version:
           type: integer
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         result:
@@ -10459,7 +10694,7 @@ components:
       required:
       - schema_version
       - challenge_id
-      - terminal_id
+      - account_id
       - period
       - at
       properties:
@@ -10468,7 +10703,7 @@ components:
         challenge_id:
           type: string
           format: uuid
-        terminal_id:
+        account_id:
           type: string
           format: uuid
         period:
@@ -12948,7 +13183,8 @@ paths:
         to share. MFX Hub never sees their password. After consent the trader is sent to `return_url`
         with `grant_id`, `result` and your `tenant_state`; then read the grant for the accounts it lists
         and choose which to connect. The consent link lives 15 minutes. A tenant whose plan does not include
-        cTrader is 403 `feature_not_entitled`.
+        cTrader is 403 `feature_not_entitled`. A tenant whose cTrader MFX Hub has suspended or disabled
+        is 403 `venue_suspended`.
       x-scope: term:write
       parameters:
       - $ref: '#/components/parameters/idempotencyKey'
@@ -12966,7 +13202,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/CtraderGrantStarted'
         '403':
-          description: 'feature_not_entitled: the tenant''s plan does not include cTrader'
+          description: 'feature_not_entitled: the tenant''s plan does not include cTrader; venue_suspended:
+            its cTrader is suspended or disabled'
           content:
             application/json:
               schema:
@@ -13022,7 +13259,10 @@ paths:
       description: 'Each chosen account becomes a trading account of yours (`venue: ctrader`), PENDING
         until MFX Hub has authorised it at cTrader, then CONNECTED with an `account.connected` event.
         Choosing an account already connected answers it unchanged. A grant that is not ACTIVE is 409
-        `state_error`; an id the grant does not list is 422 `unprocessable`.'
+        `state_error`; an id the grant does not list is 422 `unprocessable`. A tenant whose cTrader is
+        suspended or disabled is 403 `venue_suspended`, and live accounts past the tenant''s limit are
+        409 `quota_exceeded` with details {quota: live_accounts, limit, in_use}; nothing is connected
+        then.'
       x-scope: term:write
       parameters:
       - $ref: '#/components/parameters/idempotencyKey'
@@ -15117,6 +15357,16 @@ paths:
           enum:
           - active
           - archived
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - newest
+          - oldest
+          default: newest
+        description: A cursor continues the order that issued it; another order refuses it (400)
       responses:
         '200':
           description: policies
@@ -15279,22 +15529,32 @@ paths:
       - name: coverage
         in: query
         required: false
+        style: form
+        explode: true
         schema:
-          type: string
-          enum:
-          - healthy
-          - degraded
-          - disconnected
-          - unknown
-          - no_rules
+          type: array
+          items:
+            type: string
+            enum:
+            - healthy
+            - degraded
+            - disconnected
+            - unknown
+            - no_rules
+        description: Any of; repeat the parameter for several
       - name: restriction
         in: query
         required: false
+        style: form
+        explode: true
         schema:
-          type: string
-          enum:
-          - none
-          - entries_blocked
+          type: array
+          items:
+            type: string
+            enum:
+            - none
+            - entries_blocked
+        description: Any of; repeat the parameter for several
       - name: sort
         in: query
         required: false
@@ -15305,6 +15565,7 @@ paths:
           - drawdown_used
           - exposure
           - inputs_age
+          - plans
           default: daily_loss_used
       responses:
         '200':
@@ -15317,7 +15578,7 @@ paths:
           $ref: '#/components/responses/Error'
   /risk/accounts/{id}:
     parameters:
-    - $ref: '#/components/parameters/terminalId'
+    - $ref: '#/components/parameters/accountId'
     get:
       tags:
       - risk
@@ -15335,7 +15596,7 @@ paths:
           $ref: '#/components/responses/Error'
   /risk/accounts/{id}/deactivate:
     parameters:
-    - $ref: '#/components/parameters/terminalId'
+    - $ref: '#/components/parameters/accountId'
     post:
       tags:
       - risk
@@ -15361,7 +15622,7 @@ paths:
           $ref: '#/components/responses/Error'
   /risk/accounts/{id}/clear:
     parameters:
-    - $ref: '#/components/parameters/terminalId'
+    - $ref: '#/components/parameters/accountId'
     post:
       tags:
       - risk
@@ -15388,7 +15649,7 @@ paths:
           $ref: '#/components/responses/Error'
   /risk/accounts/{id}/equity:
     parameters:
-    - $ref: '#/components/parameters/terminalId'
+    - $ref: '#/components/parameters/accountId'
     get:
       tags:
       - risk
@@ -15419,6 +15680,34 @@ paths:
                 $ref: '#/components/schemas/RiskEquitySeries'
         default:
           $ref: '#/components/responses/Error'
+  /risk/accounts/{id}/close-scope:
+    parameters:
+    - $ref: '#/components/parameters/accountId'
+    get:
+      tags:
+      - risk
+      operationId: getRiskAccountCloseScope
+      summary: The positions close_positions would close now on the account under a scope, before a rule
+        that closes them is saved. Nothing is sent
+      x-scope: risk:read
+      parameters:
+      - name: scope
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - mfx_positions
+          - all_positions
+      responses:
+        '200':
+          description: the positions it would close
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskCloseScope'
+        default:
+          $ref: '#/components/responses/Error'
   /risk/coverage:
     get:
       tags:
@@ -15446,7 +15735,9 @@ paths:
         never enlarges the budget; when the symbol''s minimum volume costs more than the budget no volume
         is offered (`reason: volume_min_over_budget`). A cost the specification does not give is 422 `validation_error`
         with `details.reason = assumption_required` until the caller states it. The answer expires at
-        `expires_at` or when the price moves `risk.preview_max_move_points`.'
+        `expires_at` or when the price moves `risk.preview_max_move_points`. Its `id` names it when the
+        order is placed with its plan (`preview_id` on `POST /risk/plans`); MFX Hub keeps a preview until
+        it expires and no longer.'
       x-scope: risk:read
       requestBody:
         required: true
@@ -15496,28 +15787,48 @@ paths:
       parameters:
       - $ref: '#/components/parameters/cursor'
       - $ref: '#/components/parameters/limit'
-      - name: terminal_id
+      - name: account_id
         in: query
         required: false
+        style: form
+        explode: true
         schema:
-          type: string
-          format: uuid
+          type: array
+          items:
+            type: string
+            format: uuid
+        description: Any of; repeat the parameter for several
       - name: state
+        in: query
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - draft
+            - armed
+            - managing
+            - paused
+            - completed
+            - failed
+            - ended
+        description: Any of; repeat the parameter for several
+      - name: sort
         in: query
         required: false
         schema:
           type: string
           enum:
-          - draft
-          - armed
-          - managing
-          - paused
-          - completed
-          - failed
-          - ended
+          - newest
+          - oldest
+          default: newest
+        description: A cursor continues the order that issued it; another order refuses it (400)
       responses:
         '200':
-          description: plans
+          description: plans, the filtered set's stats first
           content:
             application/json:
               schema:
@@ -15532,8 +15843,16 @@ paths:
         managing when the position opens)
       description: 'A position has one manager. A plan on a position that already has one (a plan or a
         standalone trailing stop) needs `replace: true`, or is 409 `conflict` with `details.reason = position_managed`
-        and `details.manager`. A plan with a trailing step owns its trailing stop. With `order`, the answer
-        carries the command that places it.'
+        and `details.manager`. A plan with a trailing step owns its trailing stop. With `order` (a market
+        order; another type is 400 `validation_error`, `details.reason = order_type`), the order is checked
+        as any entry is (422 `risk_refused`, and the plan is kept `failed`, each step `skipped` naming
+        the refusal) and placed; the answer carries the command that places it, and the plan is `draft`
+        until the order''s result names a position, then arms on that position''s entry and stop. With
+        `preview_id` as well, the order must be the one previewed (the same account, symbol, side, stop
+        and volume, else 400 `validation_error`), and it is placed only while the price is within `risk.preview_max_move_points`
+        (counted in the symbol''s tick size) of the preview''s and the preview has not expired: otherwise
+        409 `preview_moved` or `preview_expired`, nothing is placed, and the client previews again. A
+        preview another tenant made, or one MFX Hub no longer holds, is `preview_expired`.'
       x-scope: risk:write
       parameters:
       - $ref: '#/components/parameters/idempotencyKey'
@@ -15761,22 +16080,31 @@ paths:
       - name: state
         in: query
         required: false
+        style: form
+        explode: true
+        description: Only accounts in these states (repeat the parameter for several)
         schema:
-          type: string
-          enum:
-          - in_progress
-          - passed
-          - failed
-          - ended
+          type: array
+          items:
+            type: string
+            enum:
+            - in_progress
+            - passed
+            - failed
+            - ended
       - name: rule
         in: query
         required: false
-        description: the rule that failed it
+        style: form
+        explode: true
+        description: Only accounts failed on these rules (repeat the parameter for several)
         schema:
-          type: string
-          enum:
-          - daily_loss
-          - max_drawdown
+          type: array
+          items:
+            type: string
+            enum:
+            - daily_loss
+            - max_drawdown
       - name: below_min_days
         in: query
         required: false
@@ -15785,6 +16113,8 @@ paths:
       - name: sort
         in: query
         required: false
+        description: 'The figure the list is ordered by: the largest first (period_ends_at the soonest
+          first), accounts without the figure last, ties by enrolment. The cursor belongs to its sort.'
         schema:
           type: string
           enum:
@@ -15826,10 +16156,10 @@ paths:
                 $ref: '#/components/schemas/RiskActivationResult'
         default:
           $ref: '#/components/responses/Error'
-  /risk/challenges/{id}/accounts/{terminal_id}:
+  /risk/challenges/{id}/accounts/{account_id}:
     parameters:
     - $ref: '#/components/parameters/pathId'
-    - name: terminal_id
+    - name: account_id
       in: path
       required: true
       schema:
@@ -15870,17 +16200,27 @@ paths:
           type: array
           items:
             $ref: '#/components/schemas/RiskActivityKind'
-      - name: terminal_id
+      - name: account_id
         in: query
         required: false
+        style: form
+        explode: true
         schema:
-          type: string
-          format: uuid
+          type: array
+          items:
+            type: string
+            format: uuid
+        description: Any of; repeat the parameter for several
       - name: outcome
         in: query
         required: false
+        style: form
+        explode: true
         schema:
-          $ref: '#/components/schemas/RiskOutcome'
+          type: array
+          items:
+            $ref: '#/components/schemas/RiskOutcome'
+        description: Any of; repeat the parameter for several
       - name: from
         in: query
         required: false
@@ -15893,6 +16233,18 @@ paths:
         schema:
           type: string
           format: date-time
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - unresolved_first
+          - newest
+          - oldest
+          default: unresolved_first
+        description: 'unresolved_first: the unresolved rows, then the rest, each newest first; newest
+          and oldest: one run. A cursor continues the order that issued it; another order refuses it (400)'
       responses:
         '200':
           description: entries, unresolved first, then newest first

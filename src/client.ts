@@ -20,6 +20,7 @@ import { Execution } from "./execution.js";
 import { MfxStream, type StreamOptions } from "./stream.js";
 import { Terminals } from "./terminals.js";
 import { MarketData } from "./md.js";
+import { Risk } from "./risk.js";
 import { TradingAccounts } from "./trading-accounts.js";
 import { USER_AGENT } from "./version.js";
 
@@ -132,6 +133,8 @@ export class MfxClient {
   readonly tradingAccounts: TradingAccounts;
   /** Market data by a cTrader account: subscriptions and candles. */
   readonly md: MarketData;
+  /** Risk Management: account rules, the planner, exit plans and challenges. */
+  readonly risk: Risk;
 
   /**
    * @param baseUrl the API's base, including the version: `https://api.mfxhub.com/v1`, or
@@ -161,6 +164,7 @@ export class MfxClient {
     this.accounts = new Accounts(this);
     this.tradingAccounts = new TradingAccounts(this);
     this.md = new MarketData(this);
+    this.risk = new Risk(this);
   }
 
   /** The id of the key this client signs with. Safe to log, unlike the private key. */

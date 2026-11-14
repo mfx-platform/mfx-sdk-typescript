@@ -4,6 +4,37 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.6.0
+
+### Added
+
+- Risk Management, as `client.risk`, over every `/v1/risk/*` route (scopes `risk:read`,
+  `risk:write`, `risk:override`).
+  - **Policies:** `createPolicy`, `addPolicyVersion` (a relaxing version needs `risk:override`
+    and a `reason`), `activate` (one outcome per account), `policy`, `policyVersion`,
+    `policiesPage` and `policies` (`sort: "newest"` or `"oldest"`), and `policyVersions`.
+  - **Accounts:** `accountsPage` (one page and its `stats`) and `accounts` (every page), filtered
+    by one or several `coverage` and `restriction` values and sorted by a figure; `account`,
+    `equity`, `closeScope(accountId, "mfx_positions" | "all_positions")`, `deactivate`, `clear`
+    and `coverage`.
+  - **The planner:** `preview` (size a trade from a risk budget) and `check` (an order already
+    sized, as the pre-trade check would judge it).
+  - **Exit plans:** `createPlan`, `plan`, `plansPage` and `plans` (several accounts and states,
+    `newest` or `oldest`), `amendPlan`, `pausePlan`, `resumePlan` and `endPlan`.
+  - **Challenges:** `createChallenge`, `addChallengeVersion`, `challenge`, `challenges`, `enrol`,
+    `challengeAccountsPage` and `challengeAccounts` (several states and rules, sorted by a
+    figure), and `challengeAccount` (its periods).
+  - **Activity:** `activityPage` and `activity` (several kinds, accounts and outcomes;
+    `unresolved_first`, `newest` or `oldest`).
+  - Every figure in a body is a decimal string: a number with a fraction is refused before
+    anything is sent.
+- `RiskRefusedError` (a `ValidationError`, code `risk_refused`): a new entry that breaks a rule in
+  force. Its `refusal` names the reason, the rule, the policy or the challenge with its version,
+  and the figure used, the limit and what the entry would have made it.
+- `RiskOverrideRequiredError` (a `ForbiddenError`, code `risk_override_required`).
+- The shared test suite moves to 0.7.0: its six Risk Management cases and the error cases for
+  every code the API names.
+
 ## 0.5.0
 
 ### Added

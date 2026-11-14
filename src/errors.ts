@@ -56,6 +56,60 @@ export class MfxApiError extends MfxError {
 export class ValidationError extends MfxApiError {
   override name = "ValidationError";
 }
+/** What a Risk Management refusal names (the contract's `RiskRefusalDetails`). */
+export interface RiskRefusal {
+  readonly reason: string;
+  readonly rule: string | null;
+  /** The policy whose rule refused it; null when a challenge's rule did. */
+  readonly policyId: string | null;
+  readonly version: number | null;
+  /** The challenge whose rule refused it; null when a policy's rule did. */
+  readonly challengeId: string | null;
+  readonly challengeVersion: number | null;
+  /** Figures as the platform wrote them, in the account's currency. */
+  readonly used: string | null;
+  readonly limit: string | null;
+  readonly wouldBe: string | null;
+}
+
+function textOrNull(value: unknown): string | null {
+  if (typeof value === "string") return value === "" ? null : value;
+  return typeof value === "number" ? String(value) : null;
+}
+
+function wholeOrNull(value: unknown): number | null {
+  if (typeof value === "boolean" || value === undefined || value === null || value === "") {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isInteger(n) ? n : null;
+}
+
+/**
+ * A new entry broke a Risk Management rule in force on the account (422 `risk_refused`); nothing
+ * was sent to the broker. Send a smaller entry, add a stop, or wait for the inputs to be fresh
+ * (`risk_inputs_stale`) or for the window to open.
+ */
+export class RiskRefusedError extends ValidationError {
+  override name = "RiskRefusedError";
+
+  /** What refused the entry, read from `details`. */
+  get refusal(): RiskRefusal {
+    const d = this.details;
+    return {
+      reason: textOrNull(d["reason"]) ?? "risk_refused",
+      rule: textOrNull(d["rule"]),
+      policyId: textOrNull(d["policy_id"]),
+      version: wholeOrNull(d["version"]),
+      challengeId: textOrNull(d["challenge_id"]),
+      challengeVersion: wholeOrNull(d["challenge_version"]),
+      used: textOrNull(d["used"]),
+      limit: textOrNull(d["limit"]),
+      wouldBe: textOrNull(d["would_be"]),
+    };
+  }
+}
+
 /** The request is not signed by a key the platform knows. */
 export class AuthError extends MfxApiError {
   override name = "AuthError";
@@ -63,6 +117,13 @@ export class AuthError extends MfxApiError {
 /** The key may not do this. */
 export class ForbiddenError extends MfxApiError {
   override name = "ForbiddenError";
+}
+/**
+ * A change that relaxes protection, made without `risk:override` and a reason (403
+ * `risk_override_required`). Nothing was changed.
+ */
+export class RiskOverrideRequiredError extends ForbiddenError {
+  override name = "RiskOverrideRequiredError";
 }
 /** The operator has disabled the tenant. */
 export class TenantDisabledError extends ForbiddenError {
@@ -136,6 +197,8 @@ const BY_CODE: Readonly<Record<string, ApiErrorClass>> = {
   conflict: ConflictError,
   state_error: StateError,
   placement_error: PlacementError,
+  risk_refused: RiskRefusedError,
+  risk_override_required: RiskOverrideRequiredError,
   broker_not_supported: UnsupportedBrokerError,
   rate_limited: RateLimitError,
   upstream_error: UpstreamError,
