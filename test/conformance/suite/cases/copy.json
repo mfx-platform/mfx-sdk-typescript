@@ -1,0 +1,1605 @@
+[
+  {
+    "id": "copy.leader_create_sends_the_account_and_the_key",
+    "rule": "Making an account a leader sends its source, account and signal lifetime with the idempotency key, and returns the leader, active",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.create_leader",
+      "args": {
+        "source": "account",
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "signal_lifetime_s": 30,
+        "idempotency_key": "case-copy-1"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/leaders",
+          "headers": {
+            "Idempotency-Key": "case-copy-1"
+          },
+          "json": {
+            "source": "account",
+            "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+            "signal_lifetime_s": 30
+          }
+        },
+        "answer": {
+          "status": 201,
+          "body": {
+            "$fixture": "copy_leader"
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "id": "06abfa00-0000-7000-8000-0000000000c1",
+        "source": "account",
+        "state": "active"
+      }
+    }
+  },
+  {
+    "id": "copy.leader_over_the_plan_is_quota_exceeded",
+    "rule": "A leader over the plan's number of leaders is a conflict naming quota_exceeded, and the write is not sent again",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.create_leader",
+      "args": {
+        "source": "external",
+        "signal_lifetime_s": 30,
+        "idempotency_key": "case-copy-2"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/leaders",
+          "headers": {
+            "Idempotency-Key": "case-copy-2"
+          },
+          "json": {
+            "source": "external",
+            "signal_lifetime_s": 30
+          }
+        },
+        "answer": {
+          "status": 409,
+          "body": {
+            "error": {
+              "code": "quota_exceeded",
+              "message": "over the plan's leaders",
+              "details": {
+                "reason": "plan_limit",
+                "limit": "copy_leaders"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "quota_exceeded",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "copy.leaders_filter_by_state_and_follow_the_cursor",
+    "rule": "Listing leaders sends the states as one comma-separated value, follows next_cursor until it is null, and keeps the stats row",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.leaders",
+      "args": {
+        "state": [
+          "active",
+          "paused"
+        ]
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/copy/leaders",
+          "query": {
+            "state": "active,paused"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "leaders": 2,
+              "active": 1,
+              "paused": 1,
+              "retired": 0
+            },
+            "items": [
+              {
+                "$fixture": "copy_leader"
+              }
+            ],
+            "next_cursor": "c-2",
+            "returned": 1
+          }
+        }
+      },
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/copy/leaders",
+          "query": {
+            "state": "active,paused",
+            "cursor": "c-2"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "leaders": 2,
+              "active": 1,
+              "paused": 1,
+              "retired": 0
+            },
+            "items": [
+              {
+                "$fixture": "copy_leader",
+                "id": "06abfa00-0000-7000-8000-0000000000c2",
+                "state": "paused"
+              }
+            ],
+            "next_cursor": null,
+            "returned": 1
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "ids": [
+          "06abfa00-0000-7000-8000-0000000000c1",
+          "06abfa00-0000-7000-8000-0000000000c2"
+        ],
+        "stats_leaders": 2
+      }
+    }
+  },
+  {
+    "id": "copy.signal_sent_again_is_the_original",
+    "rule": "An external leader's open signal sends its own id and the volume as a decimal string; an id sent before is answered with the original signal, marked duplicate",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.send_open_signal",
+      "args": {
+        "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+        "id": "s-1",
+        "symbol": "EURUSD",
+        "side": "buy",
+        "volume": {
+          "$decimal": "1.50"
+        },
+        "idempotency_key": "case-copy-3"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/leaders/06abfa00-0000-7000-8000-0000000000c1/signals",
+          "headers": {
+            "Idempotency-Key": "case-copy-3"
+          },
+          "json": {
+            "id": "s-1",
+            "symbol": "EURUSD",
+            "side": "buy",
+            "volume": "1.50"
+          }
+        },
+        "answer": {
+          "status": 202,
+          "body": {
+            "signal_id": "06abfa00-0000-7000-8000-0000000000d1",
+            "id": "s-1",
+            "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+            "duplicate": true,
+            "iat": "2026-11-13T09:00:00Z",
+            "exp": "2026-11-13T09:00:30Z"
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "signal_id": "06abfa00-0000-7000-8000-0000000000d1",
+        "duplicate": true
+      }
+    }
+  },
+  {
+    "id": "copy.signal_float_volume_refused",
+    "rule": "A binary floating-point signal volume is refused before anything is sent",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.send_open_signal",
+      "args": {
+        "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+        "id": "s-2",
+        "symbol": "EURUSD",
+        "side": "buy",
+        "volume": {
+          "$float": 0.30000000000000004
+        },
+        "idempotency_key": "case-copy-4"
+      }
+    },
+    "server": [],
+    "observe": {
+      "refuses": "invalid_argument"
+    }
+  },
+  {
+    "id": "copy.follow_sends_the_mandate",
+    "rule": "Following a leader sends the account, the leader and the scaling with the idempotency key, and returns the follower, copying, at mandate version 1",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.create_follower",
+      "args": {
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+        "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+        "scaling": {
+          "mode": "fixed_multiplier",
+          "multiplier": "0.5"
+        },
+        "idempotency_key": "case-copy-5"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/followers",
+          "headers": {
+            "Idempotency-Key": "case-copy-5"
+          },
+          "json": {
+            "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+            "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+            "scaling": {
+              "mode": "fixed_multiplier",
+              "multiplier": "0.5"
+            }
+          }
+        },
+        "answer": {
+          "status": 201,
+          "body": {
+            "$fixture": "copy_follower"
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "id": "06abfa00-0000-7000-8000-0000000000f1",
+        "state": "copying",
+        "mandate_version": 1
+      }
+    }
+  },
+  {
+    "id": "copy.follow_from_an_account_the_venue_cannot_copy_to_is_refused",
+    "rule": "A follow from an account its venue cannot copy to, such as an MT5 netting account, is a validation error naming not_on_this_venue and margin_mode, checked when it is made and not sent again",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.create_follower",
+      "args": {
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405062",
+        "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+        "scaling": {
+          "mode": "balance_ratio"
+        },
+        "idempotency_key": "case-copy-6"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/followers",
+          "headers": {
+            "Idempotency-Key": "case-copy-6"
+          },
+          "json": {
+            "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405062",
+            "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+            "scaling": {
+              "mode": "balance_ratio"
+            }
+          }
+        },
+        "answer": {
+          "status": 422,
+          "body": {
+            "error": {
+              "code": "unprocessable",
+              "message": "an MT5 netting account cannot follow",
+              "details": {
+                "reason": "not_on_this_venue",
+                "options": [
+                  "margin_mode"
+                ]
+              }
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "unprocessable",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "copy.preview_names_each_rows_match_or_reason",
+    "rule": "A preview is a read that takes no idempotency key; each row comes back with its follower volume, in the follower venue's unit (units on cTrader), or the reason it would be refused",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.preview_follower",
+      "args": {
+        "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+        "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+        "scaling": {
+          "mode": "equity_ratio"
+        },
+        "rows": [
+          {
+            "symbol": "EURUSD",
+            "volume": "1.00"
+          },
+          {
+            "symbol": "US30",
+            "volume": "1.00"
+          }
+        ]
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/followers/preview",
+          "headers": {
+            "Idempotency-Key": null
+          },
+          "json": {
+            "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+            "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+            "scaling": {
+              "mode": "equity_ratio"
+            },
+            "rows": [
+              {
+                "symbol": "EURUSD",
+                "volume": "1.00"
+              },
+              {
+                "symbol": "US30",
+                "volume": "1.00"
+              }
+            ]
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+            "venue": "ctrader",
+            "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+            "refusal": null,
+            "inputs": {
+              "leader_currency": "USD",
+              "follower_currency": "USD",
+              "rate": null,
+              "leader_balance": "10000",
+              "leader_equity": "10000",
+              "follower_balance": "5000",
+              "follower_equity": "5000",
+              "read_at": "2026-11-13T09:00:00Z"
+            },
+            "rows": [
+              {
+                "leader_symbol": "EURUSD",
+                "leader_volume": "1.00",
+                "instrument_key": "fx:EURUSD",
+                "follower_symbol": "EURUSD",
+                "matched_by": "same_name",
+                "follower_volume": "50000",
+                "reason": null,
+                "leader_contract_size": "100000",
+                "follower_contract_size": "100000",
+                "follower_volume_unit": "units"
+              },
+              {
+                "leader_symbol": "US30",
+                "leader_volume": "1.00",
+                "instrument_key": null,
+                "follower_symbol": null,
+                "matched_by": null,
+                "follower_volume": null,
+                "reason": "mapping",
+                "leader_contract_size": "1",
+                "follower_contract_size": null,
+                "follower_volume_unit": null
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "refusal": null,
+        "follower_volumes": [
+          "50000",
+          null
+        ],
+        "reasons": [
+          null,
+          "mapping"
+        ]
+      }
+    }
+  },
+  {
+    "id": "copy.unfollow_closes_copied_only_when_asked",
+    "rule": "Unfollowing sends close_copied exactly as the caller chose, and the follower comes back unfollowed",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.unfollow",
+      "args": {
+        "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+        "close_copied": false,
+        "idempotency_key": "case-copy-7"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/followers/06abfa00-0000-7000-8000-0000000000f1/unfollow",
+          "headers": {
+            "Idempotency-Key": "case-copy-7"
+          },
+          "json": {
+            "close_copied": false
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "$fixture": "copy_follower",
+            "state": "unfollowed"
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "state": "unfollowed"
+      }
+    }
+  },
+  {
+    "id": "copy.stopout_reset_with_none_active_is_a_state_error",
+    "rule": "Resetting a follower's stop-outs when none is active is a state error naming no_active_stopout, and the write is not sent again",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.reset_stopouts",
+      "args": {
+        "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+        "reason": "limit raised",
+        "idempotency_key": "case-copy-8"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/followers/06abfa00-0000-7000-8000-0000000000f1/stopouts/reset",
+          "headers": {
+            "Idempotency-Key": "case-copy-8"
+          },
+          "json": {
+            "reason": "limit raised"
+          }
+        },
+        "answer": {
+          "status": 409,
+          "body": {
+            "error": {
+              "code": "state_error",
+              "message": "no active stop-out",
+              "details": {
+                "reason": "no_active_stopout"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "StateError",
+      "fields": {
+        "code": "state_error",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "copy.log_filters_are_comma_joined_and_the_window_is_sent",
+    "rule": "Reading the copy log sends each list filter as one comma-separated value and the window as instants, and keeps the stats row over the whole window",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.log",
+      "args": {
+        "outcome": [
+          "refused",
+          "skipped"
+        ],
+        "reason": [
+          "mapping",
+          "min_volume"
+        ],
+        "from": "2026-11-12T00:00:00Z",
+        "to": "2026-11-13T00:00:00Z"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/copy/log",
+          "query": {
+            "outcome": "refused,skipped",
+            "reason": "mapping,min_volume"
+          },
+          "query_instants": {
+            "from": "2026-11-12T00:00:00Z",
+            "to": "2026-11-13T00:00:00Z"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "copies": 2,
+              "filled": 0,
+              "refused": 2,
+              "skipped": 0,
+              "stopout": 0,
+              "mfx_ms_p50": 11.5,
+              "mfx_ms_p99": 11.5,
+              "signal_to_order_ms_p50": 14.0,
+              "broker_ms_p50": null,
+              "mfx_ms_p95": 30.0,
+              "signal_to_order_ms_p95": 35.0,
+              "broker_ms_p95": null
+            },
+            "items": [
+              {
+                "$fixture": "copy_log_row"
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "min_volume"
+              }
+            ],
+            "next_cursor": null,
+            "returned": 2
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "count": 2,
+        "reasons": [
+          "mapping",
+          "min_volume"
+        ],
+        "stats_refused": 2
+      }
+    }
+  },
+  {
+    "id": "copy.log_reads_every_refusal_reason",
+    "rule": "Every refusal reason of the closed list reads back as the word the API sent, with the venue's own code beside broker",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.log",
+      "args": {
+        "outcome": [
+          "refused"
+        ]
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/copy/log",
+          "query": {
+            "outcome": "refused"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "copies": 16,
+              "filled": 0,
+              "refused": 16,
+              "skipped": 0,
+              "stopout": 0,
+              "mfx_ms_p50": 11.5,
+              "mfx_ms_p99": 11.5,
+              "signal_to_order_ms_p50": 14.0,
+              "broker_ms_p50": null,
+              "mfx_ms_p95": 30.0,
+              "signal_to_order_ms_p95": 35.0,
+              "broker_ms_p95": null
+            },
+            "items": [
+              {
+                "$fixture": "copy_log_row",
+                "reason": "mapping",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "min_volume",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "no_stop",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "risk_rule",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "plan_limit",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "stopped_out",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "signal_expired",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "skip_pending",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "close_only",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "paused",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "account_not_connected",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "market_closed",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "no_conversion",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "not_on_this_venue",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "venue_unavailable",
+                "venue_code": null
+              },
+              {
+                "$fixture": "copy_log_row",
+                "reason": "broker",
+                "venue_code": "TRADING_BAD_VOLUME"
+              }
+            ],
+            "next_cursor": null,
+            "returned": 16
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "count": 16,
+        "reasons": [
+          "mapping",
+          "min_volume",
+          "no_stop",
+          "risk_rule",
+          "plan_limit",
+          "stopped_out",
+          "signal_expired",
+          "skip_pending",
+          "close_only",
+          "paused",
+          "account_not_connected",
+          "market_closed",
+          "no_conversion",
+          "not_on_this_venue",
+          "venue_unavailable",
+          "broker"
+        ],
+        "stats_refused": 16
+      }
+    }
+  },
+  {
+    "id": "copy.log_reason_outside_the_closed_list_refused",
+    "rule": "A refusal reason that is not one of the closed list, such as a draft's terminal_not_active, is refused before anything is sent",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.log",
+      "args": {
+        "reason": [
+          "terminal_not_active"
+        ]
+      }
+    },
+    "server": [],
+    "observe": {
+      "refuses": "invalid_argument"
+    }
+  },
+  {
+    "id": "copy.group_members_are_each_answered",
+    "rule": "Adding followers to a group sends their ids with the idempotency key, and each follower's outcome is answered apart",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.add_group_followers",
+      "args": {
+        "group_id": "06abfa00-0000-7000-8000-0000000000e1",
+        "follower_ids": [
+          "06abfa00-0000-7000-8000-0000000000f1",
+          "06abfa00-0000-7000-8000-0000000000f2"
+        ],
+        "idempotency_key": "case-copy-9"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/groups/06abfa00-0000-7000-8000-0000000000e1/followers",
+          "headers": {
+            "Idempotency-Key": "case-copy-9"
+          },
+          "json": {
+            "follower_ids": [
+              "06abfa00-0000-7000-8000-0000000000f1",
+              "06abfa00-0000-7000-8000-0000000000f2"
+            ]
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "results": [
+              {
+                "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+                "outcome": "done",
+                "reason": null
+              },
+              {
+                "follower_id": "06abfa00-0000-7000-8000-0000000000f2",
+                "outcome": "refused",
+                "reason": "in_another_group"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "outcomes": [
+          "done",
+          "refused"
+        ],
+        "reasons": [
+          null,
+          "in_another_group"
+        ]
+      }
+    }
+  },
+  {
+    "id": "copy.events_copied_names_what_the_copy_became",
+    "rule": "copy.copied names the follower account and its venue, the leader's deal, what the copy became in the follower venue's unit, and MFX Hub's latency and stage timings as numbers",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.read_events",
+      "args": {
+        "count": 1
+      }
+    },
+    "stream": [
+      [
+        {
+          "recv": {
+            "op": "subscribe",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "ack",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "msg",
+            "ch": "events",
+            "seq": 1,
+            "type": "copy.copied",
+            "data": {
+              "schema_version": "1",
+              "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+              "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+              "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+              "venue": "ctrader",
+              "signal_id": "06abfa00-0000-7000-8000-0000000000d1",
+              "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001",
+              "deal": {
+                "action": "open",
+                "side": "buy",
+                "units": "100000",
+                "price": "1.08512",
+                "instrument_key": "fx:EURUSD"
+              },
+              "as": {
+                "symbol": "EURUSD",
+                "side": "buy",
+                "volume": "50000",
+                "price": "1.08514"
+              },
+              "latency_ms": 12.5,
+              "slippage": "0.00002",
+              "stages": {
+                "detect_ms": 2,
+                "expand_ms": 1.5,
+                "broker_ms": 40.5
+              },
+              "at": "2026-11-13T09:00:00Z"
+            }
+          }
+        }
+      ]
+    ],
+    "observe": {
+      "returns": {
+        "types": [
+          "copy.copied"
+        ],
+        "accounts": [
+          "4c2d3e4f-5a6b-7c8d-9e0f-102030405061"
+        ],
+        "venues": [
+          "ctrader"
+        ],
+        "reasons": [
+          null
+        ]
+      }
+    }
+  },
+  {
+    "id": "copy.events_refused_names_the_reason_and_the_venues_code",
+    "rule": "copy.refused names the follower account and its venue, the leader's deal, the outcome, the reason from the closed list and the venue's own code beside broker",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.read_events",
+      "args": {
+        "count": 1
+      }
+    },
+    "stream": [
+      [
+        {
+          "recv": {
+            "op": "subscribe",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "ack",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "msg",
+            "ch": "events",
+            "seq": 1,
+            "type": "copy.refused",
+            "data": {
+              "schema_version": "1",
+              "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+              "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+              "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+              "venue": "ctrader",
+              "signal_id": "06abfa00-0000-7000-8000-0000000000d1",
+              "deal": {
+                "action": "open",
+                "side": "buy",
+                "units": "100000",
+                "price": "1.08512",
+                "instrument_key": "fx:EURUSD"
+              },
+              "outcome": "refused",
+              "reason": "broker",
+              "venue_code": "TRADING_BAD_VOLUME",
+              "why": "the venue refused the volume",
+              "risk": null,
+              "at": "2026-11-13T09:00:00Z"
+            }
+          }
+        }
+      ]
+    ],
+    "observe": {
+      "returns": {
+        "types": [
+          "copy.refused"
+        ],
+        "accounts": [
+          "4c2d3e4f-5a6b-7c8d-9e0f-102030405061"
+        ],
+        "venues": [
+          "ctrader"
+        ],
+        "reasons": [
+          "broker"
+        ]
+      }
+    }
+  },
+  {
+    "id": "copy.events_stopout_names_the_limit_and_what_it_closed",
+    "rule": "copy.stopout names the follower account and its venue, the limit reached, what was used and the copied volume it closed, in the follower venue's unit",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.read_events",
+      "args": {
+        "count": 1
+      }
+    },
+    "stream": [
+      [
+        {
+          "recv": {
+            "op": "subscribe",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "ack",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "msg",
+            "ch": "events",
+            "seq": 1,
+            "type": "copy.stopout",
+            "data": {
+              "schema_version": "1",
+              "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+              "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+              "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+              "venue": "ctrader",
+              "stopout_id": "06abfa00-0000-7000-8000-0000000000b1",
+              "limit": "daily",
+              "used": "312.40",
+              "closed": [
+                {
+                  "symbol": "EURUSD",
+                  "volume": "50000",
+                  "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001"
+                }
+              ],
+              "at": "2026-11-13T09:00:00Z"
+            }
+          }
+        }
+      ]
+    ],
+    "observe": {
+      "returns": {
+        "types": [
+          "copy.stopout"
+        ],
+        "accounts": [
+          "4c2d3e4f-5a6b-7c8d-9e0f-102030405061"
+        ],
+        "venues": [
+          "ctrader"
+        ],
+        "reasons": [
+          null
+        ]
+      }
+    }
+  },
+  {
+    "id": "copy.events_drift_names_how_far_the_copy_is_off",
+    "rule": "copy.drift names the follower account and its venue and how far its copied exposure is from the expected, as a decimal percentage",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.read_events",
+      "args": {
+        "count": 1
+      }
+    },
+    "stream": [
+      [
+        {
+          "recv": {
+            "op": "subscribe",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "ack",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "msg",
+            "ch": "events",
+            "seq": 1,
+            "type": "copy.drift",
+            "data": {
+              "schema_version": "1",
+              "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+              "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+              "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+              "venue": "ctrader",
+              "drift_pct": "4.5",
+              "at": "2026-11-13T09:00:00Z"
+            }
+          }
+        }
+      ]
+    ],
+    "observe": {
+      "returns": {
+        "types": [
+          "copy.drift"
+        ],
+        "accounts": [
+          "4c2d3e4f-5a6b-7c8d-9e0f-102030405061"
+        ],
+        "venues": [
+          "ctrader"
+        ],
+        "reasons": [
+          null
+        ]
+      }
+    }
+  },
+  {
+    "id": "copy.events_state_changed_names_both_states_and_why",
+    "rule": "copy.state_changed names the follower account and its venue, the state it left, the state it is in and why",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.read_events",
+      "args": {
+        "count": 1
+      }
+    },
+    "stream": [
+      [
+        {
+          "recv": {
+            "op": "subscribe",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "ack",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "msg",
+            "ch": "events",
+            "seq": 1,
+            "type": "copy.state_changed",
+            "data": {
+              "schema_version": "1",
+              "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+              "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+              "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+              "venue": "ctrader",
+              "from": "copying",
+              "to": "stopped_out",
+              "why": "stopout",
+              "at": "2026-11-13T09:00:00Z"
+            }
+          }
+        }
+      ]
+    ],
+    "observe": {
+      "returns": {
+        "types": [
+          "copy.state_changed"
+        ],
+        "accounts": [
+          "4c2d3e4f-5a6b-7c8d-9e0f-102030405061"
+        ],
+        "venues": [
+          "ctrader"
+        ],
+        "reasons": [
+          null
+        ]
+      }
+    }
+  },
+  {
+    "id": "copy.group_close_sends_its_reason_and_pause_with_the_key",
+    "rule": "Closing a group's copies sends the reason and pause, which has no default, with the idempotency key, and answers the batch and each member's close",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.close_group",
+      "args": {
+        "group_id": "06abfa00-0000-7000-8000-0000000000e1",
+        "reason": "desk closing",
+        "pause": true,
+        "idempotency_key": "case-copy-20"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/groups/06abfa00-0000-7000-8000-0000000000e1/close",
+          "headers": {
+            "Idempotency-Key": "case-copy-20"
+          },
+          "json": {
+            "reason": "desk closing",
+            "pause": true
+          }
+        },
+        "answer": {
+          "status": 202,
+          "body": {
+            "group_id": "06abfa00-0000-7000-8000-0000000000e1",
+            "batch_id": "06abfa00-0000-7000-8000-0000000000a2",
+            "paused": true,
+            "followers": 2,
+            "closes": [
+              "06abfa00-0000-7000-8000-0000000000a1",
+              "06abfa00-0000-7000-8000-0000000000a3"
+            ]
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "batch_id": "06abfa00-0000-7000-8000-0000000000a2",
+        "paused": true,
+        "closes": [
+          "06abfa00-0000-7000-8000-0000000000a1",
+          "06abfa00-0000-7000-8000-0000000000a3"
+        ]
+      }
+    }
+  },
+  {
+    "id": "copy.group_rollover_dry_run_sends_no_key",
+    "rule": "A dry run of a group's rollover sends the fields and the page size with no idempotency key, and answers each member's outcome and the changes it would make",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.rollover_group",
+      "args": {
+        "group_id": "06abfa00-0000-7000-8000-0000000000e1",
+        "dry_run": true,
+        "fields": [
+          "scaling"
+        ],
+        "limit": 100
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/copy/groups/06abfa00-0000-7000-8000-0000000000e1/rollover",
+          "headers": {
+            "Idempotency-Key": null
+          },
+          "json": {
+            "dry_run": true,
+            "fields": [
+              "scaling"
+            ],
+            "limit": 100
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "group_id": "06abfa00-0000-7000-8000-0000000000e1",
+            "dry_run": true,
+            "fields": [
+              "scaling"
+            ],
+            "results": [
+              {
+                "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+                "outcome": "changed",
+                "changes": {
+                  "scaling": {
+                    "from": {
+                      "mode": "equity_ratio"
+                    },
+                    "to": {
+                      "mode": "balance_ratio"
+                    }
+                  }
+                },
+                "reason": null
+              },
+              {
+                "follower_id": "06abfa00-0000-7000-8000-0000000000f2",
+                "outcome": "refused",
+                "changes": {},
+                "reason": "not_on_this_venue"
+              }
+            ],
+            "next_after": null
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "outcomes": [
+          "changed",
+          "refused"
+        ],
+        "reasons": [
+          null,
+          "not_on_this_venue"
+        ],
+        "next_after": null
+      }
+    }
+  },
+  {
+    "id": "copy.closes_filter_by_batch_and_state_and_follow_the_cursor",
+    "rule": "Listing requested closes sends the batch and the states as one comma-separated value, follows next_cursor until it is null, and keeps the stats row",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.closes",
+      "args": {
+        "batch_id": "06abfa00-0000-7000-8000-0000000000a2",
+        "state": [
+          "pending",
+          "incomplete"
+        ]
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/copy/closes",
+          "query": {
+            "batch_id": "06abfa00-0000-7000-8000-0000000000a2",
+            "state": "pending,incomplete"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "pending": 1,
+              "done": 0,
+              "incomplete": 1,
+              "superseded": 0
+            },
+            "items": [
+              {
+                "$fixture": "copy_close"
+              }
+            ],
+            "next_cursor": "c-2",
+            "returned": 1
+          }
+        }
+      },
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/copy/closes",
+          "query": {
+            "batch_id": "06abfa00-0000-7000-8000-0000000000a2",
+            "state": "pending,incomplete",
+            "cursor": "c-2"
+          }
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "pending": 1,
+              "done": 0,
+              "incomplete": 1,
+              "superseded": 0
+            },
+            "items": [
+              {
+                "$fixture": "copy_close",
+                "id": "06abfa00-0000-7000-8000-0000000000a3",
+                "follower_id": "06abfa00-0000-7000-8000-0000000000f2",
+                "state": "incomplete",
+                "finished_at": "2026-11-13T09:00:00Z"
+              }
+            ],
+            "next_cursor": null,
+            "returned": 1
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "ids": [
+          "06abfa00-0000-7000-8000-0000000000a1",
+          "06abfa00-0000-7000-8000-0000000000a3"
+        ],
+        "states": [
+          "pending",
+          "incomplete"
+        ],
+        "stats_incomplete": 1
+      }
+    }
+  },
+  {
+    "id": "copy.closes_a_cause_from_a_later_version_is_read_not_refused",
+    "rule": "A close whose cause is a word this contract does not list, as a later version may add, is read and returned with the rest of the page; the call does not fail",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.closes",
+      "args": {}
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/copy/closes"
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "pending": 1,
+              "done": 1,
+              "incomplete": 0,
+              "superseded": 0
+            },
+            "items": [
+              {
+                "$fixture": "copy_close",
+                "cause": "a_word_from_a_later_version"
+              },
+              {
+                "$fixture": "copy_close",
+                "id": "06abfa00-0000-7000-8000-0000000000a3",
+                "state": "done",
+                "finished_at": "2026-11-13T09:00:00Z"
+              }
+            ],
+            "next_cursor": null,
+            "returned": 2
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "ids": [
+          "06abfa00-0000-7000-8000-0000000000a1",
+          "06abfa00-0000-7000-8000-0000000000a3"
+        ],
+        "states": [
+          "pending",
+          "done"
+        ],
+        "stats_incomplete": 0
+      }
+    }
+  },
+  {
+    "id": "copy.leaders_a_source_and_state_from_a_later_version_are_read_not_refused",
+    "rule": "A leader whose source and state are words this contract does not list, as a later version may add, is read and returned with the rest of the page; the call does not fail",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.leaders",
+      "args": {}
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/copy/leaders"
+        },
+        "answer": {
+          "status": 200,
+          "body": {
+            "stats": {
+              "leaders": 2,
+              "active": 1,
+              "paused": 0,
+              "retired": 0
+            },
+            "items": [
+              {
+                "$fixture": "copy_leader"
+              },
+              {
+                "$fixture": "copy_leader",
+                "id": "06abfa00-0000-7000-8000-0000000000c2",
+                "source": "a_word_from_a_later_version",
+                "state": "a_word_from_a_later_version"
+              }
+            ],
+            "next_cursor": null,
+            "returned": 2
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "ids": [
+          "06abfa00-0000-7000-8000-0000000000c1",
+          "06abfa00-0000-7000-8000-0000000000c2"
+        ],
+        "stats_leaders": 2
+      }
+    }
+  },
+  {
+    "id": "copy.events_closed_names_what_it_closed_and_what_it_did_not",
+    "rule": "copy.closed names the follower account and its venue, the close, its cause and final state, what it closed with each command, and what it did not close with why",
+    "source": "Copy Trading",
+    "call": {
+      "op": "copy.read_events",
+      "args": {
+        "count": 1
+      }
+    },
+    "stream": [
+      [
+        {
+          "recv": {
+            "op": "subscribe",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "ack",
+            "ch": "events"
+          }
+        },
+        {
+          "send": {
+            "op": "msg",
+            "ch": "events",
+            "seq": 1,
+            "type": "copy.closed",
+            "data": {
+              "schema_version": "1",
+              "close_id": "06abfa00-0000-7000-8000-0000000000a1",
+              "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+              "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+              "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+              "venue": "ctrader",
+              "cause": "unfollowed",
+              "state": "incomplete",
+              "closed": [
+                {
+                  "symbol": "EURUSD",
+                  "volume": "50000",
+                  "command_id": "0191f0c2-bbbb-7ccc-8ddd-000000000001"
+                }
+              ],
+              "not_closed": [
+                {
+                  "symbol": "XAUUSD",
+                  "volume": "10",
+                  "why": "netting"
+                }
+              ],
+              "at": "2026-11-13T09:00:00Z"
+            }
+          }
+        }
+      ]
+    ],
+    "observe": {
+      "returns": {
+        "types": [
+          "copy.closed"
+        ],
+        "accounts": [
+          "4c2d3e4f-5a6b-7c8d-9e0f-102030405061"
+        ],
+        "venues": [
+          "ctrader"
+        ],
+        "reasons": [
+          null
+        ]
+      }
+    }
+  }
+]

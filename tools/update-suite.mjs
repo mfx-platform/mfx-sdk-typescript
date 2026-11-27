@@ -19,7 +19,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HERE = join(ROOT, "test", "conformance");
 const TARGET = join(HERE, "suite");
 // What an SDK needs from the suite: the cases, what they refer to, and the fake hub.
-const TAKEN = ["cases", "fixtures.json", "vocabulary.json", "src/mfx_fake_hub", "LICENSE"];
+const TAKEN = [
+  "cases",
+  "fixtures.json",
+  "vocabulary.json",
+  "sdkref",
+  "src/mfx_fake_hub",
+  "LICENSE",
+];
 
 const [suite] = process.argv.slice(2);
 if (suite === undefined) {

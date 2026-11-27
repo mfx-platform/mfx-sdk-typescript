@@ -56,7 +56,10 @@ export class MfxApiError extends MfxError {
 export class ValidationError extends MfxApiError {
   override name = "ValidationError";
 }
-/** What a Risk Management refusal names (the contract's `RiskRefusalDetails`). */
+/**
+ * What a Risk Management refusal names: the rule, the figures and the policy or challenge behind it,
+ * as a refusal's details and a copy refusal's `risk` carry them.
+ */
 export interface RiskRefusal {
   readonly reason: string;
   readonly rule: string | null;
@@ -137,6 +140,135 @@ export class TenantSuspendedError extends ForbiddenError {
 export class MaintenanceError extends ForbiddenError {
   override name = "MaintenanceError";
 }
+/**
+ * 402: a payment is missing. Not retryable unchanged: it ends when someone pays.
+ *
+ * `BillingPaymentRequiredError` is the one the platform sends to an API key; a 402 whose code this
+ * version does not know arrives as this class, by its status, with its code kept.
+ */
+export class PaymentRequiredError extends MfxApiError {
+  override name = "PaymentRequiredError";
+}
+
+/** What clears a billing standing (the contract's `BillingAction`). */
+export interface BillingAction {
+  /** `top_up` or `pay_invoice`; read a word you do not know as text. */
+  readonly kind: string;
+  /**
+   * The portal page that does it, relative to the portal's address (`/billing/top-up`): join it
+   * to the portal's address to give a person a link.
+   */
+  readonly portalPath: string;
+  /** At least this much clears it, in USD: the decimal string the platform wrote, never a number. */
+  readonly amountUsd: string | null;
+  /** The invoice to pay; null for a top-up. */
+  readonly invoiceId: string | null;
+}
+
+const DECIMAL_TEXT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+
+/** A decimal the platform wrote, kept exactly as written; anything that is not one reads as null. */
+function amountOrNull(value: unknown): string | null {
+  return typeof value === "string" && DECIMAL_TEXT.test(value) ? value : null;
+}
+
+/** A word the platform wrote; anything else reads as null. */
+function wordOrNull(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/** A moment the platform wrote; one that is missing or cannot be read is null. */
+function timeOrNull(value: unknown): Date | null {
+  if (typeof value !== "string" || value === "") return null;
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/**
+ * 402 `billing_payment_required`: a payment is missing on the billing profile the request falls
+ * under, and nothing was done.
+ *
+ * It is **not retryable**: sending the same request again changes nothing until the payment is
+ * made. At `stage` `reminder` it comes only from a request that adds something billed (a new
+ * account, an add-on switched on). Once `stage` is `suspended` it can come from **any write** on
+ * the tenant or the profile (orders, account changes, copy settings), whatever route it was sent
+ * to, not only the routes that document it. **Reads keep working** throughout, the billing reads
+ * (`client.billing`) included.
+ *
+ * What a caller does: show `message` and {@link action} to a person. `action.portalPath` is the
+ * portal page where they fix it (a top-up, or the invoice to pay). Once paid, the accounts are
+ * released, usually within the hour; then send the request again (a write under the same
+ * idempotency key). `payBy` is the last moment a payment avoids the suspension that begins at
+ * `suspendsAt`.
+ *
+ * Execution methods never throw: an order refused for billing comes back as a refused
+ * `ExecutionResult` whose `detail` carries this error's message.
+ *
+ * Every detail is read from `details`, and is null where the platform did not say or wrote
+ * something that cannot be read.
+ */
+export class BillingPaymentRequiredError extends PaymentRequiredError {
+  override name = "BillingPaymentRequiredError";
+
+  /** The tenant the refusal concerns. */
+  get tenantId(): string | null {
+    return textOrNull(this.details["tenant_id"]);
+  }
+
+  /** The billing profile the request falls under; on Standard, its one profile. */
+  get billingProfileId(): string | null {
+    return textOrNull(this.details["billing_profile_id"]);
+  }
+
+  /**
+   * `reminder` (only what adds something billed is refused) or `suspended` (every write on the
+   * profile's accounts is). Read a word you do not know as text.
+   */
+  get stage(): string | null {
+    return wordOrNull(this.details["stage"]);
+  }
+
+  /**
+   * Why: `balance_used_up` or `invoice_overdue` (the contract's `details.cause`). Named apart from
+   * `Error.cause`, which stays the standard slot for the error that caused this one, so tools that
+   * walk error chains keep working.
+   */
+  get billingCause(): string | null {
+    return wordOrNull(this.details["cause"]);
+  }
+
+  /** When the stage began. */
+  get since(): Date | null {
+    return timeOrNull(this.details["since"]);
+  }
+
+  /** The first suspended moment. */
+  get suspendsAt(): Date | null {
+    return timeOrNull(this.details["suspends_at"]);
+  }
+
+  /** The last moment a payment avoids the suspension. */
+  get payBy(): Date | null {
+    return timeOrNull(this.details["pay_by"]);
+  }
+
+  /** What clears it, with the portal page that does it; null if the platform named none. */
+  get action(): BillingAction | null {
+    const raw = this.details["action"];
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+    const action = raw as Readonly<Record<string, unknown>>;
+    const kind = action["kind"];
+    const portalPath = action["portal_path"];
+    if (typeof kind !== "string" || typeof portalPath !== "string") return null;
+    return {
+      kind,
+      portalPath,
+      amountUsd: amountOrNull(action["amount_usd"]),
+      invoiceId: textOrNull(action["invoice_id"]),
+    };
+  }
+}
+
 /** No such thing; also the answer for another tenant's id. */
 export class NotFoundError extends MfxApiError {
   override name = "NotFoundError";
@@ -149,6 +281,127 @@ export class ConflictError extends MfxApiError {
 export class StateError extends ConflictError {
   override name = "StateError";
 }
+/** A legal document due, as a refusal for an unaccepted agreement names it. */
+export interface DueDocument {
+  /**
+   * Which document: `terms`, `mt5_licence`, `service_agreement_<plan>` (the contract's
+   * `LegalDocumentKey`, an open list: a key this version does not know is one more document).
+   */
+  readonly document: string;
+  /** The version due; null if the platform wrote none that can be read. */
+  readonly number: number | null;
+  /** The plan a Service Agreement belongs to; null for the Terms and the licence. */
+  readonly plan: string | null;
+  /**
+   * When its grace period ends or ended (`grace_ends_at`); null for a plan change, which waits
+   * for acceptance instead.
+   */
+  readonly graceEndsAt: Date | null;
+}
+
+/** A move from one plan to another, as a refusal names it (the contract's `PlanChangeSummary`). */
+export interface PlanChange {
+  readonly id: string;
+  /** The plan now: `standard` or `enterprise`. */
+  readonly from: string;
+  /** The plan after acceptance. */
+  readonly to: string;
+  /** `awaiting_acceptance`, `active`, `lapsed` or `withdrawn`; read a word you do not know as text. */
+  readonly state: string;
+  readonly requestedAt: Date | null;
+  /** When an awaiting change lapses if nobody accepts it; null once decided. */
+  readonly until: Date | null;
+  /** MFX Hub asked for the change (true) or the organisation did (false); null if unsaid. */
+  readonly requestedByOperator: boolean | null;
+}
+
+/** Each readable entry of `details.documents`; one without a document key is skipped. */
+function documentsOf(value: unknown): readonly DueDocument[] {
+  if (!Array.isArray(value)) return [];
+  const due: DueDocument[] = [];
+  for (const raw of value as unknown[]) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const entry = raw as Readonly<Record<string, unknown>>;
+    const document = wordOrNull(entry["document"]);
+    if (document === null) continue;
+    due.push({
+      document,
+      number: wholeOrNull(entry["number"]),
+      plan: wordOrNull(entry["plan"]),
+      graceEndsAt: timeOrNull(entry["grace_ends_at"]),
+    });
+  }
+  return due;
+}
+
+/**
+ * 409 `terms_not_accepted`: a version of the Terms of Service or the MetaTrader 5 licence the
+ * organisation must accept is past its grace period, and nobody has accepted it. Not retryable
+ * unchanged.
+ *
+ * Adding a terminal and attaching an expert advisor are refused until an owner or admin accepts
+ * it in the customer portal; nothing running is touched, and reads, orders and positions keep
+ * working. {@link documents} names each document, its version and when its grace period ended.
+ */
+export class TermsNotAcceptedError extends ConflictError {
+  override name = "TermsNotAcceptedError";
+
+  /** Each document due, from `details.documents`; empty if the platform named none. */
+  get documents(): readonly DueDocument[] {
+    return documentsOf(this.details["documents"]);
+  }
+}
+
+/**
+ * 409 `service_agreement_not_accepted`: the organisation is moving to another plan and the new
+ * plan's Service Agreement has not been accepted, or a version of its plan's Service Agreement
+ * that must be accepted is past its grace period. Not retryable unchanged.
+ *
+ * Until an owner or admin accepts it at {@link acceptUrl}, adding a terminal, attaching an expert
+ * advisor, generating or replacing an API key and asking for higher limits are refused. Nothing
+ * running is touched: reads, orders, positions, detach, stop, restart and resume all keep
+ * working. Where the Terms are held as well, this is the error, and {@link documents} lists every
+ * document due. `client.tenant.serviceAgreement()` says what is due at any time.
+ *
+ * Every detail is read from `details`, and is null (or empty) where the platform did not say or
+ * wrote something that cannot be read.
+ */
+export class ServiceAgreementNotAcceptedError extends ConflictError {
+  override name = "ServiceAgreementNotAcceptedError";
+
+  /** The plan change awaiting acceptance; null when none is (a version past its grace period). */
+  get planChange(): PlanChange | null {
+    const raw = this.details["plan_change"];
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+    const change = raw as Readonly<Record<string, unknown>>;
+    const id = wordOrNull(change["id"]);
+    const from = wordOrNull(change["from"]);
+    const to = wordOrNull(change["to"]);
+    const state = wordOrNull(change["state"]);
+    if (id === null || from === null || to === null || state === null) return null;
+    const byOperator = change["requested_by_operator"];
+    return {
+      id,
+      from,
+      to,
+      state,
+      requestedAt: timeOrNull(change["requested_at"]),
+      until: timeOrNull(change["until"]),
+      requestedByOperator: typeof byOperator === "boolean" ? byOperator : null,
+    };
+  }
+
+  /** Each document due, the Terms included when they are held too; empty if none was named. */
+  get documents(): readonly DueDocument[] {
+    return documentsOf(this.details["documents"]);
+  }
+
+  /** Where an owner or admin accepts, in the customer portal. */
+  get acceptUrl(): string | null {
+    return wordOrNull(this.details["accept_url"]);
+  }
+}
+
 /** The terminal cannot be placed. */
 export class PlacementError extends ConflictError {
   override name = "PlacementError";
@@ -193,10 +446,16 @@ const BY_CODE: Readonly<Record<string, ApiErrorClass>> = {
   tenant_disabled: TenantDisabledError,
   tenant_suspended: TenantSuspendedError,
   maintenance: MaintenanceError,
+  // 402, and about neither the key nor the request: a payment is missing on the billing profile.
+  // Mapped by code because once a profile is suspended any write can answer it.
+  billing_payment_required: BillingPaymentRequiredError,
   not_found: NotFoundError,
   conflict: ConflictError,
   state_error: StateError,
   placement_error: PlacementError,
+  // 409, holding additions only, until an owner or admin accepts the documents named.
+  terms_not_accepted: TermsNotAcceptedError,
+  service_agreement_not_accepted: ServiceAgreementNotAcceptedError,
   risk_refused: RiskRefusedError,
   risk_override_required: RiskOverrideRequiredError,
   broker_not_supported: UnsupportedBrokerError,
@@ -209,10 +468,10 @@ const BY_CODE: Readonly<Record<string, ApiErrorClass>> = {
 const BY_STATUS: Readonly<Record<number, ApiErrorClass>> = {
   400: ValidationError,
   401: AuthError,
+  402: PaymentRequiredError,
   403: ForbiddenError,
   404: NotFoundError,
   409: ConflictError,
-  413: ValidationError,
   422: ValidationError,
   429: RateLimitError,
   500: InternalError,
@@ -233,11 +492,12 @@ export function errorFor(
   return new Kind(message, status, code, details, retryAfterS);
 }
 
-/** Seconds from a Retry-After header, or null when there is none or it cannot be read. */
+/**
+ * Seconds from a Retry-After header, or null when there is none or it is not a number of seconds.
+ * The API writes whole seconds only; an HTTP date is not read.
+ */
 export function retryAfterSeconds(header: string | null): number | null {
   if (header === null || header.trim() === "") return null;
   const seconds = Number(header);
-  if (Number.isFinite(seconds)) return Math.max(0, seconds);
-  const at = Date.parse(header);
-  return Number.isNaN(at) ? null : Math.max(0, (at - Date.now()) / 1000);
+  return Number.isFinite(seconds) ? Math.max(0, seconds) : null;
 }

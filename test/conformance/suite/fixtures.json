@@ -98,5 +98,111 @@
     "profit_pct": "6.1",
     "trading_days": 1,
     "result": null
+  },
+  "copy_leader": {
+    "id": "06abfa00-0000-7000-8000-0000000000c1",
+    "source": "account",
+    "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+    "venue": "mt5",
+    "filters": {
+      "symbols": [],
+      "tag": null,
+      "side": "both"
+    },
+    "copies": {},
+    "signal_lifetime_s": 30,
+    "limits": {
+      "max_risk_pct": null,
+      "max_leverage": null
+    },
+    "who_may_join": {
+      "accounts": "any",
+      "account_ids": []
+    },
+    "state": "active",
+    "followers_live": 0,
+    "created_at": "2026-11-13T09:00:00Z",
+    "updated_at": "2026-11-13T09:00:00Z"
+  },
+  "copy_follower": {
+    "id": "06abfa00-0000-7000-8000-0000000000f1",
+    "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+    "venue": "ctrader",
+    "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+    "scaling": {
+      "mode": "fixed_multiplier",
+      "multiplier": "0.5"
+    },
+    "bounds": {},
+    "symbol_map": {},
+    "options": {},
+    "risk_limits": {},
+    "close_on_stopout": false,
+    "group_id": null,
+    "mandate_version": 1,
+    "state": "copying",
+    "stopouts": [],
+    "created_at": "2026-11-13T09:00:00Z",
+    "updated_at": "2026-11-13T09:00:00Z"
+  },
+  "copy_log_row": {
+    "id": "06abfa00-0000-7000-8000-0000000000a9",
+    "created_at": "2026-11-13T09:00:00Z",
+    "signal_id": "06abfa00-0000-7000-8000-0000000000d1",
+    "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+    "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+    "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+    "venue": "ctrader",
+    "action": "open",
+    "side": "buy",
+    "instrument_key": "fx:EURUSD",
+    "outcome": "refused",
+    "reason": "mapping",
+    "venue_code": null,
+    "command_id": null,
+    "copied_volume": null,
+    "price": null,
+    "slippage": null,
+    "stages": {
+      "detect_ms": 2.5
+    },
+    "mfx_ms": 11.5,
+    "signal_to_order_ms": 14.0,
+    "deal": {
+      "action": "open",
+      "side": "buy",
+      "units": "100000",
+      "price": "1.08512",
+      "instrument_key": "fx:EURUSD"
+    },
+    "symbol": null,
+    "risk": null
+  },
+  "copy_close": {
+    "id": "06abfa00-0000-7000-8000-0000000000a1",
+    "follower_id": "06abfa00-0000-7000-8000-0000000000f1",
+    "leader_id": "06abfa00-0000-7000-8000-0000000000c1",
+    "account_id": "4c2d3e4f-5a6b-7c8d-9e0f-102030405061",
+    "group_id": "06abfa00-0000-7000-8000-0000000000e1",
+    "batch_id": "06abfa00-0000-7000-8000-0000000000a2",
+    "cause": "group_close",
+    "reason": "desk closing",
+    "cutoff_at": "2026-11-13T09:00:00Z",
+    "requested_by": "key",
+    "attempt": 1,
+    "next_attempt_at": null,
+    "state": "pending",
+    "created_at": "2026-11-13T09:00:00Z",
+    "finished_at": null,
+    "entries": []
+  },
+  "plan_change": {
+    "id": "0191f0c2-eeee-7fff-8aaa-000000000001",
+    "from": "standard",
+    "to": "enterprise",
+    "state": "awaiting_acceptance",
+    "requested_at": "2026-11-17T09:00:00Z",
+    "until": "2026-12-01T09:00:00Z",
+    "requested_by_operator": true
   }
 }

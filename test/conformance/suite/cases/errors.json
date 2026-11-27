@@ -1373,6 +1373,80 @@
     }
   },
   {
+    "id": "errors.billing_payment_required",
+    "rule": "An answer with code billing_payment_required (402) is a ApiError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 402,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "billing_payment_required",
+              "message": "refused: billing_payment_required"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ApiError",
+      "fields": {
+        "code": "billing_payment_required",
+        "status": 402
+      }
+    }
+  },
+  {
+    "id": "errors.payment_failed",
+    "rule": "An answer with code payment_failed (402) is a ApiError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 402,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "payment_failed",
+              "message": "refused: payment_failed"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ApiError",
+      "fields": {
+        "code": "payment_failed",
+        "status": 402
+      }
+    }
+  },
+  {
     "id": "errors.venue_suspended",
     "rule": "An answer with code venue_suspended (403) is a ForbiddenError that keeps the code",
     "source": "Errors",
@@ -2273,6 +2347,191 @@
     }
   },
   {
+    "id": "errors.support_state",
+    "rule": "An answer with code support_state (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "support_state",
+              "message": "refused: support_state"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "support_state",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.support_case_claimed",
+    "rule": "An answer with code support_case_claimed (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "support_case_claimed",
+              "message": "refused: support_case_claimed"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "support_case_claimed",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.telegram_code_expired",
+    "rule": "An answer with code telegram_code_expired (410) is a ApiError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 410,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "telegram_code_expired",
+              "message": "refused: telegram_code_expired"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ApiError",
+      "fields": {
+        "code": "telegram_code_expired",
+        "status": 410
+      }
+    }
+  },
+  {
+    "id": "errors.gone",
+    "rule": "An answer with code gone (410) is a ApiError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 410,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "gone",
+              "message": "refused: gone"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ApiError",
+      "fields": {
+        "code": "gone",
+        "status": 410
+      }
+    }
+  },
+  {
+    "id": "errors.support_invalid",
+    "rule": "An answer with code support_invalid (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "support_invalid",
+              "message": "refused: support_invalid"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "support_invalid",
+        "status": 422
+      }
+    }
+  },
+  {
     "id": "errors.dependency_unavailable",
     "rule": "An answer with code dependency_unavailable (503) is a DependencyUnavailableError that keeps the code",
     "source": "Errors",
@@ -2345,6 +2604,672 @@
       "fields": {
         "code": "internal_error",
         "status": 500
+      }
+    }
+  },
+  {
+    "id": "errors.credentials_invalid",
+    "rule": "An answer with code credentials_invalid (401) is a AuthError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 401,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "credentials_invalid",
+              "message": "refused: credentials_invalid"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "AuthError",
+      "fields": {
+        "code": "credentials_invalid",
+        "status": 401
+      }
+    }
+  },
+  {
+    "id": "errors.session_required",
+    "rule": "An answer with code session_required (401) is a AuthError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 401,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "session_required",
+              "message": "refused: session_required"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "AuthError",
+      "fields": {
+        "code": "session_required",
+        "status": 401
+      }
+    }
+  },
+  {
+    "id": "errors.stream_token_invalid",
+    "rule": "An answer with code stream_token_invalid (401) is a AuthError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 401,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "stream_token_invalid",
+              "message": "refused: stream_token_invalid"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "AuthError",
+      "fields": {
+        "code": "stream_token_invalid",
+        "status": 401
+      }
+    }
+  },
+  {
+    "id": "errors.factor_required",
+    "rule": "An answer with code factor_required (401) is a AuthError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 401,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "factor_required",
+              "message": "refused: factor_required"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "AuthError",
+      "fields": {
+        "code": "factor_required",
+        "status": 401
+      }
+    }
+  },
+  {
+    "id": "errors.step_up_required",
+    "rule": "An answer with code step_up_required (403) is a ForbiddenError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "step_up_required",
+              "message": "refused: step_up_required"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ForbiddenError",
+      "fields": {
+        "code": "step_up_required",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.origin_refused",
+    "rule": "An answer with code origin_refused (403) is a ForbiddenError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "origin_refused",
+              "message": "refused: origin_refused"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ForbiddenError",
+      "fields": {
+        "code": "origin_refused",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.caller_refused",
+    "rule": "An answer with code caller_refused (401) is a AuthError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 401,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "caller_refused",
+              "message": "refused: caller_refused"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "AuthError",
+      "fields": {
+        "code": "caller_refused",
+        "status": 401
+      }
+    }
+  },
+  {
+    "id": "errors.password_too_short",
+    "rule": "An answer with code password_too_short (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "password_too_short",
+              "message": "refused: password_too_short"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "password_too_short",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "errors.password_too_long",
+    "rule": "An answer with code password_too_long (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "password_too_long",
+              "message": "refused: password_too_long"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "password_too_long",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "errors.password_breached",
+    "rule": "An answer with code password_breached (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "password_breached",
+              "message": "refused: password_breached"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "password_breached",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "errors.code_invalid",
+    "rule": "An answer with code code_invalid (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "code_invalid",
+              "message": "refused: code_invalid"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "code_invalid",
+        "status": 422
+      }
+    }
+  },
+  {
+    "id": "errors.email_in_use",
+    "rule": "An answer with code email_in_use (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "email_in_use",
+              "message": "refused: email_in_use"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "email_in_use",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.terms_outdated",
+    "rule": "An answer with code terms_outdated (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "terms_outdated",
+              "message": "refused: terms_outdated"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "terms_outdated",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.terms_not_accepted",
+    "rule": "An answer with code terms_not_accepted (409) is a TermsNotAcceptedError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "terms_not_accepted",
+              "message": "refused: terms_not_accepted"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "TermsNotAcceptedError",
+      "fields": {
+        "code": "terms_not_accepted",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.service_agreement_not_accepted",
+    "rule": "An answer with code service_agreement_not_accepted (409) is a ServiceAgreementNotAcceptedError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "service_agreement_not_accepted",
+              "message": "refused: service_agreement_not_accepted"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ServiceAgreementNotAcceptedError",
+      "fields": {
+        "code": "service_agreement_not_accepted",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.organisation_required",
+    "rule": "An answer with code organisation_required (409) is a ConflictError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 409,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "organisation_required",
+              "message": "refused: organisation_required"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ConflictError",
+      "fields": {
+        "code": "organisation_required",
+        "status": 409
+      }
+    }
+  },
+  {
+    "id": "errors.permission_denied",
+    "rule": "An answer with code permission_denied (403) is a ForbiddenError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 403,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "permission_denied",
+              "message": "refused: permission_denied"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ForbiddenError",
+      "fields": {
+        "code": "permission_denied",
+        "status": 403
+      }
+    }
+  },
+  {
+    "id": "errors.recipients_required",
+    "rule": "An answer with code recipients_required (422) is a ValidationError that keeps the code",
+    "source": "Errors",
+    "call": {
+      "op": "terminals.get",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 422,
+          "headers": {},
+          "body": {
+            "error": {
+              "code": "recipients_required",
+              "message": "refused: recipients_required"
+            }
+          }
+        },
+        "times": "any"
+      }
+    ],
+    "observe": {
+      "raises": "ValidationError",
+      "fields": {
+        "code": "recipients_required",
+        "status": 422
       }
     }
   }

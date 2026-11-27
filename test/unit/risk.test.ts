@@ -5,6 +5,7 @@ import {
   MfxClient,
   RiskOverrideRequiredError,
   RiskRefusedError,
+  StateError,
   ValidationError,
   errorFor,
 } from "../../src/index.js";
@@ -95,6 +96,34 @@ describe("a policy is created, versioned, put in force and read, each write with
     await expect(c.risk.activate(ID, [], { version: 0, idempotencyKey: "a-3" })).rejects.toThrow(
       RangeError,
     );
+  });
+
+  it("archives a policy once no account holds it", async () => {
+    const net = fake(
+      json(409, {
+        error: {
+          code: "state_error",
+          message: "the policy is held by 1 account",
+          details: { accounts: [ACCOUNT] },
+        },
+      }),
+      ok({ id: ID, archived_at: "2026-11-16T07:00:00Z" }),
+    );
+    const c = client(net);
+    const held = await c.risk
+      .archivePolicy(ID, { idempotencyKey: "ar-1" })
+      .catch((e: unknown) => e);
+    expect(held).toBeInstanceOf(StateError);
+    expect((held as StateError).details).toEqual({ accounts: [ACCOUNT] });
+    expect(net.calls).toHaveLength(1);
+    const archived = await c.risk.archivePolicy(ID, { idempotencyKey: "ar-2" });
+    expect(sent(net)).toMatchObject({
+      method: "POST",
+      path: `/v1/risk/policies/${ID}/archive`,
+      key: "ar-2",
+      body: undefined,
+    });
+    expect(archived.archived_at).toBe("2026-11-16T07:00:00Z");
   });
 });
 
@@ -279,6 +308,34 @@ describe("an exit plan is created, amended, paused, resumed, ended and listed wi
 });
 
 describe("a challenge is created, versioned and enrolled, and its accounts and activity read by filter and sort", () => {
+  it("archives a challenge once no account is in progress", async () => {
+    const net = fake(
+      json(409, {
+        error: {
+          code: "state_error",
+          message: "1 account is in progress",
+          details: { accounts: [ACCOUNT] },
+        },
+      }),
+      ok({ id: ID, archived_at: "2026-11-16T12:00:00Z" }),
+    );
+    const c = client(net);
+    const held = await c.risk
+      .archiveChallenge(ID, { idempotencyKey: "ca-1" })
+      .catch((e: unknown) => e);
+    expect(held).toBeInstanceOf(StateError);
+    expect((held as StateError).details).toEqual({ accounts: [ACCOUNT] });
+    expect(net.calls).toHaveLength(1);
+    const archived = await c.risk.archiveChallenge(ID, { idempotencyKey: "ca-2" });
+    expect(sent(net)).toMatchObject({
+      method: "POST",
+      path: `/v1/risk/challenges/${ID}/archive`,
+      key: "ca-2",
+      body: undefined,
+    });
+    expect(archived.archived_at).toBe("2026-11-16T12:00:00Z");
+  });
+
   it("reads a programme", async () => {
     const net = fake(
       ok({ id: ID }),

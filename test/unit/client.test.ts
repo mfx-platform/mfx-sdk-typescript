@@ -175,7 +175,8 @@ describe("every error code the API names is its own error class", () => {
     expect(retryAfterSeconds("7")).toBe(7);
     expect(retryAfterSeconds("-3")).toBe(0);
     expect(retryAfterSeconds("never")).toBeNull();
-    expect(retryAfterSeconds(new Date(Date.now() + 60_000).toUTCString())).toBeGreaterThan(50);
+    expect(retryAfterSeconds(new Date(Date.now() + 60_000).toUTCString())).toBeNull();
+    expect(errorFor("", "too large", 413)).toMatchObject({ name: "MfxApiError" });
   });
 });
 
@@ -188,10 +189,13 @@ describe("the client copes with an answer it cannot read and an aborted request"
       "tenant_disabled",
       "tenant_suspended",
       "maintenance",
+      "billing_payment_required",
       "not_found",
       "conflict",
       "state_error",
       "placement_error",
+      "terms_not_accepted",
+      "service_agreement_not_accepted",
       "broker_not_supported",
       "rate_limited",
       "upstream_error",

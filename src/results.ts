@@ -80,7 +80,7 @@ const REASONS: ReadonlySet<string> = new Set<Reason>([
   "refused",
 ]);
 
-/** MT5 relates one order, one deal and one position per fill; null where MT5 has none yet. */
+/** The terminal relates one order, one deal and one position per fill; null where none is yet. */
 export interface Tickets {
   readonly order: number | null;
   readonly deal: number | null;
@@ -150,12 +150,12 @@ export interface ExecutionResult {
   readonly venue: string | null;
   /**
    * The venue's own code for a refusal, verbatim, beside `reason` (cTrader: such as
-   * NOT_ENOUGH_MONEY). Null on MT5, whose code is `mt5Retcode`.
+   * NOT_ENOUGH_MONEY). Null on a terminal, whose code is `mt5Retcode`.
    */
   readonly venueCode: string | null;
-  /** Every deal the command made, in order (cTrader). Empty on MT5, where `tickets.deal` is it. */
+  /** Every deal the command made, in order (cTrader). Empty on a terminal, where `tickets.deal` is it. */
   readonly deals: readonly VenueDeal[];
-  /** The volume filled in units of the instrument; `execVolume` stays in lots. Null on MT5. */
+  /** The volume filled in units of the instrument; `execVolume` stays in lots. Null on a terminal. */
   readonly volumeUnits: string | null;
   /** A close-by the venue has no equivalent for, done as two closes (cTrader). */
   readonly closeByEmulated: boolean;

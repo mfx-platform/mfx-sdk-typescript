@@ -200,7 +200,7 @@ export class TradingAccounts {
 
   /**
    * The symbols a cTrader account can trade: a volume a command sends must be a whole
-   * `volume_step` between `volume_min` and `volume_max`, in lots. An MT5 account is refused.
+   * `volume_step` between `volume_min` and `volume_max`, in lots. A terminal's account is refused.
    */
   async symbols(accountId: string): Promise<TradingSymbolList> {
     const id = uuid("accountId", accountId);

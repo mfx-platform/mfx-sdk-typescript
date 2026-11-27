@@ -23,11 +23,44 @@ import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Written so that these lines do not match themselves when this file is scanned.
-const INTERNAL = /design[/]|\bDEC-\d+|AB#\d+|\bADR-\d+|TC-S[1]-|§ ?\d|\bLane \d|-intern[a]l\b/i;
+// The test-case area codes: a case id of the second scheme is TC-, one of these, and four digits.
+// This closed list MUST agree with the one the test-results publisher holds (and the private
+// test/tc.ts copies), so nothing it would record can be published. Longest code first, as the
+// publisher builds its pattern.
+const TC_AREAS = [
+  "CP",
+  "AGENT",
+  "INFRA",
+  "DOCS",
+  "SDK",
+  "ADMIN",
+  "BILL",
+  "SUP",
+  "PORTAL",
+  "RISK",
+  "SEC",
+  "COPY",
+  "CTRD",
+  "IDN",
+  "TRADE",
+  "CX",
+].sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
+
+// Written so that these lines do not match themselves when this file is scanned: the area codes
+// are joined in, so no area id is spelt out here.
+const INTERNAL = new RegExp(
+  String.raw`design[/]|\bDEC-\d+|AB#\d+|\bADR-\d+|TC-S[1]-|§ ?\d|\bLane \d|-intern[a]l\b` +
+    String.raw`|TC-(?:${TC_AREAS.join("|")})-\d{4}`,
+  "i",
+);
 // A tracker area path is upper case: MFX, a backslash, a capital. A lower-case file path that
 // starts the same way is not one.
 const AREA = /MFX[\\]{1,2}[A-Z]/;
+// The SDK reference (docs/sdkref.json) is read on the docs site, so it is held to more: the
+// product's word for the terminal and the machine it runs on, never the internal ones. The
+// lower-case names the API itself uses (`mt5Retcode`) stay.
+const REFERENCE = /\bMT5\b|\b[Cc]ells?\b/;
+const isReference = (where) => where === "docs/sdkref.json" || where.endsWith("/docs/sdkref.json");
 
 const TEXT = [
   ".ts",
@@ -88,7 +121,8 @@ export function scan(sources, names) {
   const out = [];
   for (const [where, text] of sources) {
     text.split(/\r?\n/).forEach((line, index) => {
-      const hit = match(line, names);
+      const hit =
+        match(line, names) ?? (isReference(where) ? (REFERENCE.exec(line)?.[0] ?? null) : null);
       if (hit !== null) out.push(`${where}:${index + 1}: ${hit}`);
     });
   }

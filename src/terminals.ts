@@ -96,8 +96,8 @@ function stateQuery(state: TerminalFilter["state"]): string | undefined {
 
 /**
  * Can this terminal be used right now: market data, execution, account reads? True only in ACTIVE.
- * OFFLINE means its cell is not reporting; the platform brings it back by itself, so retry rather
- * than create another. QUEUED means it is placed and waiting for its turn to start: its cell
+ * OFFLINE means its host is not reporting; the platform brings it back by itself, so retry rather
+ * than create another. QUEUED means it is placed and waiting for its turn to start: its host
  * starts terminals a few at a time, and `queue.expected_start_at` says when to expect it.
  */
 export function isUsable(terminal: Pick<Terminal, "state">): boolean {
@@ -106,7 +106,7 @@ export function isUsable(terminal: Pick<Terminal, "state">): boolean {
 
 /** Where a QUEUED terminal waits: its place, its expected start and why it waits. */
 export type TerminalQueue = components["schemas"]["TerminalQueue"];
-/** A bulk restart or retire: what was taken, what was refused, and its expected finish. */
+/** A bulk restart: what was taken, what was refused, and its expected finish. */
 export type BulkAction = components["schemas"]["BulkAction"];
 
 /** The states a terminal passes through on its way to ACTIVE; every other state is settled. */
@@ -222,7 +222,7 @@ export class Terminals {
 
   /**
    * The terminal's MetaTrader journal, newest first. While it runs the lines are read from its
-   * cell (`from: "live"`); after it stops they are the last lines its cell kept, for 24 hours
+   * host (`from: "live"`); after it stops they are the last lines its host kept, for 24 hours
    * (`from: "last_words"`). Account numbers are masked. A terminal with no lines held is 409.
    */
   async journal(terminalId: string, options: JournalOptions = {}): Promise<TerminalJournal> {
@@ -242,7 +242,7 @@ export class Terminals {
   }
 
   /**
-   * Ask for a terminal. Answered at once in state REQUESTED; the move to a cell happens after.
+   * Ask for a terminal. Answered at once in state REQUESTED; the move to a host happens after.
    * Sent once and never retried: if the answer is lost, send the same idempotency key again.
    */
   async create(request: CreateTerminal): Promise<Terminal> {
@@ -271,7 +271,7 @@ export class Terminals {
    * a state it settled in instead (FAILED, for one), or still on its way when the time ran out.
    *
    * A QUEUED terminal is read again at its `queue.expected_start_at` (between 2 s and a minute
-   * away), not on a fixed beat: its cell starts terminals a few at a time, so asking every two
+   * away), not on a fixed beat: its host starts terminals a few at a time, so asking every two
    * seconds tells nothing new. Any other state is read again after 2 s, doubling to 15 s.
    */
   async waitUntilActive(terminalId: string, options: WaitOptions = {}): Promise<Terminal> {
@@ -294,17 +294,12 @@ export class Terminals {
 
   /**
    * Restart many of your terminals at once. Each is judged by the rules of a single restart; a
-   * refused one is listed in `refused` with its rule's code and the rest are taken. Each cell
+   * refused one is listed in `refused` with its rule's code and the rest are taken. Each host
    * carries its share at its own pace, so the terminals already running on it are not slowed.
    * Answered at once with the action and its expected finish; its items never expire.
    */
   async bulkRestart(ask: BulkAsk): Promise<BulkAction> {
     return this.#bulk("/terminals:restart", ask);
-  }
-
-  /** Retire many of your terminals at once, as {@link bulkRestart} restarts them. */
-  async bulkRetire(ask: BulkAsk): Promise<BulkAction> {
-    return this.#bulk("/terminals:retire", ask);
   }
 
   /** A bulk action's progress: counts per state, what was refused, and its expected finish. */

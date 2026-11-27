@@ -7,11 +7,26 @@
 // vendored at the version in suite-version.txt; the hub is started by ./hub.ts.
 
 import { readdirSync, readFileSync } from "node:fs";
-import { describe, expect, inject, it } from "vitest";
+import { describe, expect, inject, it, vi } from "vitest";
 
 import * as errors from "../../src/errors.js";
-import { MfxClient, SigningKey, StreamMessage, signingMessage } from "../../src/index.js";
-import type { Timeframe } from "../../src/index.js";
+import {
+  MfxClient,
+  SERVICE_AGREEMENT_WARNING,
+  SigningKey,
+  StreamMessage,
+  copyEventOf,
+  signingMessage,
+} from "../../src/index.js";
+import type {
+  CopyEvent,
+  CopyOptionsInput,
+  CopyOutcome,
+  CopyPreviewRow,
+  CopyReason,
+  CopyScaling,
+  Timeframe,
+} from "../../src/index.js";
 
 interface Vocabulary {
   readonly key: { readonly id: string; readonly seed_hex: string };
@@ -111,6 +126,38 @@ async function call(
       Buffer.from(String(a.body)),
     );
     return { signature: new SigningKey(SEED).sign(message) };
+  }
+  if (op === "tenant.service_agreement") {
+    const due = await client.tenant.serviceAgreement();
+    return {
+      due: due.due,
+      held: due.held,
+      plan: due.plan,
+      plan_change_state: due.plan_change?.state ?? null,
+      plan_change_to: due.plan_change?.to ?? null,
+      documents: due.documents.map((d) => d.document),
+      accept_url: due.accept_url,
+    };
+  }
+  if (op === "agreement.due_warnings") {
+    // Fresh clients, one after another, each reading the terminal `calls` times; only the SDK's
+    // warning that a Service Agreement is due is counted.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      for (let made = 0; made < Number(a.clients); made++) {
+        const each = new MfxClient(client.baseUrl, client.keyId, SEED, {
+          sleep: () => Promise.resolve(),
+        });
+        for (let sent = 0; sent < Number(a.calls); sent++) {
+          await each.terminals.get(String(a.terminal_id));
+        }
+      }
+      return {
+        warnings: warn.mock.calls.filter(([said]) => said === SERVICE_AGREEMENT_WARNING).length,
+      };
+    } finally {
+      warn.mockRestore();
+    }
   }
   if (op === "terminals.get") {
     const terminal = await client.terminals.get(String(a.terminal_id));
@@ -228,8 +275,181 @@ async function call(
     }
     return { ids };
   }
+  if (op.startsWith("copy.")) return copyCall(client, op, a);
   if (op in VOCABULARY.ops) throw new NotYet(`this SDK has no ${op} yet`);
   throw new Error(`this runner does not know the operation ${JSON.stringify(op)}`);
+}
+
+/** The Copy Trading operations, through `client.copy`. */
+async function copyCall(
+  client: MfxClient,
+  op: string,
+  a: Readonly<Record<string, unknown>>,
+): Promise<Record<string, unknown>> {
+  const copy = client.copy;
+  const key = { idempotencyKey: a.idempotency_key as string };
+  if (op === "copy.create_leader") {
+    const leader = await copy.createLeader({
+      source: a.source as "account" | "external",
+      ...(a.account_id === undefined ? {} : { accountId: a.account_id as string }),
+      signalLifetimeS: a.signal_lifetime_s as number,
+      ...key,
+    });
+    return { id: leader.id, source: leader.source, state: leader.state };
+  }
+  if (op === "copy.leaders") {
+    const state = a.state as "active"[] | undefined;
+    const ids: string[] = [];
+    let statsLeaders: number | null = null;
+    let cursor: string | undefined;
+    do {
+      const page = await copy.leadersPage({
+        ...(state === undefined ? {} : { state }),
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      ids.push(...page.items.map((leader) => leader.id));
+      statsLeaders ??= page.stats?.leaders ?? null;
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    return { ids, stats_leaders: statsLeaders };
+  }
+  if (op === "copy.send_open_signal") {
+    const accepted = await copy.sendOpenSignal(a.leader_id as string, {
+      id: a.id as string,
+      symbol: a.symbol as string,
+      side: a.side as "buy" | "sell",
+      volume: a.volume as string,
+      ...key,
+    });
+    return { signal_id: accepted.signal_id, duplicate: accepted.duplicate };
+  }
+  if (op === "copy.create_follower") {
+    const follower = await copy.createFollower({
+      accountId: a.account_id as string,
+      leaderId: a.leader_id as string,
+      scaling: a.scaling as CopyScaling,
+      ...(a.options === undefined ? {} : { options: a.options as CopyOptionsInput }),
+      ...key,
+    });
+    return { id: follower.id, state: follower.state, mandate_version: follower.mandate_version };
+  }
+  if (op === "copy.preview_follower") {
+    const preview = await copy.previewFollower({
+      accountId: a.account_id as string,
+      leaderId: a.leader_id as string,
+      scaling: a.scaling as CopyScaling,
+      rows: a.rows as CopyPreviewRow[],
+    });
+    return {
+      refusal: preview.refusal,
+      follower_volumes: preview.rows.map((row) => row.follower_volume),
+      reasons: preview.rows.map((row) => row.reason),
+    };
+  }
+  if (op === "copy.unfollow") {
+    const follower = await copy.unfollow(a.follower_id as string, {
+      closeCopied: a.close_copied as boolean,
+      ...key,
+    });
+    return { state: follower.state };
+  }
+  if (op === "copy.reset_stopouts") {
+    const follower = await copy.resetStopouts(a.follower_id as string, {
+      reason: a.reason as string,
+      ...key,
+    });
+    return { state: follower.state };
+  }
+  if (op === "copy.log") {
+    const log = await copy.logPage({
+      ...(a.outcome === undefined ? {} : { outcome: a.outcome as CopyOutcome[] }),
+      ...(a.reason === undefined ? {} : { reason: a.reason as CopyReason[] }),
+      ...(a.from === undefined ? {} : { from: new Date(a.from as string) }),
+      ...(a.to === undefined ? {} : { to: new Date(a.to as string) }),
+    });
+    return {
+      count: log.length,
+      reasons: log.items.map((row) => row.reason),
+      stats_refused: log.stats?.refused ?? null,
+    };
+  }
+  if (op === "copy.add_group_followers") {
+    const result = await copy.addGroupFollowers(
+      a.group_id as string,
+      a.follower_ids as string[],
+      key,
+    );
+    return {
+      outcomes: result.results.map((item) => item.outcome),
+      reasons: result.results.map((item) => item.reason),
+    };
+  }
+  if (op === "copy.close_group") {
+    const closed = await copy.closeGroup(a.group_id as string, {
+      reason: a.reason as string,
+      pause: a.pause as boolean,
+      ...key,
+    });
+    return { batch_id: closed.batch_id, paused: closed.paused, closes: closed.closes };
+  }
+  if (op === "copy.rollover_group") {
+    const rolled = await copy.rolloverGroup(a.group_id as string, {
+      dryRun: a.dry_run as boolean,
+      ...(a.fields === undefined ? {} : { fields: a.fields as "scaling"[] }),
+      ...(a.after === undefined ? {} : { after: a.after as string }),
+      ...(a.limit === undefined ? {} : { limit: a.limit as number }),
+      ...(a.idempotency_key === undefined ? {} : key),
+    });
+    return {
+      outcomes: rolled.results.map((item) => item.outcome),
+      reasons: rolled.results.map((item) => item.reason),
+      next_after: rolled.next_after,
+    };
+  }
+  if (op === "copy.closes") {
+    const ids: string[] = [];
+    const states: string[] = [];
+    let statsIncomplete: number | null = null;
+    let cursor: string | undefined;
+    do {
+      const page = await copy.closesPage({
+        ...(a.batch_id === undefined ? {} : { batchId: a.batch_id as string }),
+        ...(a.state === undefined ? {} : { state: a.state as "pending"[] }),
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      ids.push(...page.items.map((close) => close.id));
+      states.push(...page.items.map((close) => close.state));
+      statsIncomplete ??= page.stats?.incomplete ?? null;
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    return { ids, states, stats_incomplete: statsIncomplete };
+  }
+  if (op === "copy.read_events") return readCopyEvents(client, Number(a.count));
+  throw new Error(`this runner does not know the operation ${JSON.stringify(op)}`);
+}
+
+/** Read `count` messages on the events channel as the SDK's typed copy events. */
+async function readCopyEvents(client: MfxClient, count: number): Promise<Record<string, unknown>> {
+  const events: CopyEvent[] = [];
+  const stream = await client.stream({ maxReconnects: 3 });
+  try {
+    await stream.subscribe("events");
+    for await (const message of stream) {
+      if (message instanceof StreamMessage) {
+        const event = copyEventOf(message);
+        if (event !== null) events.push(event);
+        if (events.length >= count) break;
+      }
+    }
+  } finally {
+    await stream.close();
+  }
+  return {
+    types: events.map((event) => event.type),
+    accounts: events.map((event) => event.data.account_id),
+    venues: events.map((event) => event.data.venue),
+    reasons: events.map((event) => (event.type === "copy.refused" ? event.data.reason : null)),
+  };
 }
 
 /**

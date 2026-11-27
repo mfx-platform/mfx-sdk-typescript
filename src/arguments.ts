@@ -38,3 +38,24 @@ export function limit(value: unknown): number | undefined {
   if (value < 1 || value > 200) throw new RangeError(`limit is 1 to 200; got ${value}`);
   return value;
 }
+
+/**
+ * A filter of one word or several, each one of `allowed`, sent comma-separated as the contract
+ * writes a list that is not exploded (`state=due,overdue`). An unknown word, or an empty list, is
+ * refused before anything is sent.
+ */
+export function words<T extends string>(
+  name: string,
+  value: T | readonly T[] | undefined,
+  allowed: readonly string[],
+): string | undefined {
+  if (value === undefined) return undefined;
+  const list: readonly unknown[] = typeof value === "string" ? [value] : value;
+  if (list.length === 0) throw new RangeError(`${name} is one or more values; got none`);
+  for (const word of list) {
+    if (typeof word !== "string" || !allowed.includes(word)) {
+      throw new RangeError(`${name} is one of ${allowed.join(", ")}; got ${JSON.stringify(word)}`);
+    }
+  }
+  return list.join(",");
+}

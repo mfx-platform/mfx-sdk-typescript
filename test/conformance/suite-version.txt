@@ -1,1 +1,1 @@
-mfx-sdk-conformance 0.7.0 (285b3bf7e111730a860a006d41f455a3c10667cc)
+mfx-sdk-conformance 0.13.0 (5e57a4197ffde605342fd1a262a2ff18687b7fb1)

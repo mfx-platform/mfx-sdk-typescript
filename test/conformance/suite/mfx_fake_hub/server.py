@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import datetime as dt
 import hashlib
 import json
 import re
@@ -103,6 +104,37 @@ def _expected_query(expect: dict[str, Any]) -> Query:
     return out
 
 
+def _instant(text: str) -> dt.datetime | None:
+    """An ISO 8601 instant, whatever its spelling (``Z`` or ``+00:00``, with or without
+    milliseconds); None when it is not one or names no offset."""
+    try:
+        moment = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def query_problems(expect: dict[str, Any], query: Query) -> list[str]:
+    """How a request's query differs from what a step expects; empty when it matches.
+
+    ``query`` is every parameter but the instants, exactly. ``query_instants`` names the
+    parameters that are times, each compared as an instant, because two languages spell one
+    instant differently (``2026-11-12T00:00:00Z``, ``2026-11-12T00:00:00.000Z``).
+    """
+    out: list[str] = []
+    instants: dict[str, str] = expect.get("query_instants", {})
+    plain = {k: v for k, v in query.items() if k not in instants}
+    if "query" in expect and plain != _expected_query(expect["query"]):
+        out.append(f"query {plain}, expected {expect['query']}")
+    for name, want in instants.items():
+        got = query.get(name)
+        if got is None:
+            out.append(f"query has no {name}, expected the instant {want}")
+        elif isinstance(got, list) or _instant(got) is None or _instant(got) != _instant(want):
+            out.append(f"query {name} is {got!r}, expected the instant {want}")
+    return out
+
+
 def request_problems(
     expect: dict[str, Any], method: str, path: str, query: Query, headers: Any, body: bytes
 ) -> list[str]:  # noqa: ANN401
@@ -112,8 +144,7 @@ def request_problems(
         out.append(f"method {method}, expected {expect['method']}")
     if path != expect.get("path", path):
         out.append(f"path {path}, expected {expect['path']}")
-    if "query" in expect and query != _expected_query(expect["query"]):
-        out.append(f"query {query}, expected {expect['query']}")
+    out += query_problems(expect, query)
     for name, want in expect.get("headers", {}).items():
         got = headers.get(name)
         if want is None and got is not None:

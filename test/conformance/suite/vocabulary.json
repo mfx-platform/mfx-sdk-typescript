@@ -210,6 +210,198 @@
         "ids"
       ],
       "note": "every account of the challenge, following the cursor; state is a list sent as repeated parameters; ids are the account ids in order"
+    },
+    "copy.create_leader": {
+      "args": [
+        "source",
+        "signal_lifetime_s",
+        "idempotency_key",
+        "account_id?"
+      ],
+      "returns": [
+        "id",
+        "source",
+        "state"
+      ],
+      "note": "make a leader; state and source are the words the API sends"
+    },
+    "copy.leaders": {
+      "args": [
+        "state?"
+      ],
+      "returns": [
+        "ids",
+        "stats_leaders"
+      ],
+      "note": "state is a list of states; follow next_cursor to the end. ids are every leader's id in the order served; stats_leaders is the stats row's leaders count"
+    },
+    "copy.send_open_signal": {
+      "args": [
+        "leader_id",
+        "id",
+        "symbol",
+        "side",
+        "volume",
+        "idempotency_key"
+      ],
+      "returns": [
+        "signal_id",
+        "duplicate"
+      ],
+      "note": "an external leader's open; id is the caller's own id for the signal, and volume a $decimal (a $float must be refused)"
+    },
+    "copy.create_follower": {
+      "args": [
+        "account_id",
+        "leader_id",
+        "scaling",
+        "idempotency_key",
+        "options?"
+      ],
+      "returns": [
+        "id",
+        "state",
+        "mandate_version"
+      ],
+      "note": "scaling and options are objects in the API's own names, passed as the SDK takes them"
+    },
+    "copy.preview_follower": {
+      "args": [
+        "account_id",
+        "leader_id",
+        "scaling",
+        "rows"
+      ],
+      "returns": [
+        "refusal",
+        "follower_volumes",
+        "reasons"
+      ],
+      "note": "rows are objects with symbol and volume; follower_volumes and reasons are each row's, in order, null where the API sent null; refusal is the API's refusal or null"
+    },
+    "copy.unfollow": {
+      "args": [
+        "follower_id",
+        "close_copied",
+        "idempotency_key"
+      ],
+      "returns": [
+        "state"
+      ]
+    },
+    "copy.reset_stopouts": {
+      "args": [
+        "follower_id",
+        "reason",
+        "idempotency_key"
+      ],
+      "returns": [
+        "state"
+      ]
+    },
+    "copy.log": {
+      "args": [
+        "outcome?",
+        "reason?",
+        "from?",
+        "to?"
+      ],
+      "returns": [
+        "count",
+        "reasons",
+        "stats_refused"
+      ],
+      "note": "one page of the copy log; outcome and reason are lists, from and to ISO 8601 instants. count is the rows in the page, reasons each row's reason in order (null where none), stats_refused the stats row's refused count"
+    },
+    "copy.add_group_followers": {
+      "args": [
+        "group_id",
+        "follower_ids",
+        "idempotency_key"
+      ],
+      "returns": [
+        "outcomes",
+        "reasons"
+      ],
+      "note": "outcomes and reasons are each follower's, in the order answered"
+    },
+    "copy.read_events": {
+      "args": [
+        "count"
+      ],
+      "returns": [
+        "types",
+        "accounts",
+        "venues",
+        "reasons"
+      ],
+      "note": "open the stream against the fake hub, subscribe the events channel, read count messages and close. Read each as the SDK's typed copy event where it has one: types are the event types, accounts each event's account_id, venues its venue, reasons a copy.refused event's reason and null for any other (copy.closed included)"
+    },
+    "copy.close_group": {
+      "args": [
+        "group_id",
+        "reason",
+        "pause",
+        "idempotency_key"
+      ],
+      "returns": [
+        "batch_id",
+        "paused",
+        "closes"
+      ],
+      "note": "close the copied positions of every live member of the group; pause is required. closes are the close ids answered, in order"
+    },
+    "copy.rollover_group": {
+      "args": [
+        "group_id",
+        "dry_run",
+        "fields?",
+        "after?",
+        "limit?",
+        "idempotency_key?"
+      ],
+      "returns": [
+        "outcomes",
+        "reasons",
+        "next_after"
+      ],
+      "note": "set the group's template on its members, or with dry_run see what it would change; a dry run takes no idempotency key. outcomes and reasons are each member's, in the order answered"
+    },
+    "copy.closes": {
+      "args": [
+        "batch_id?",
+        "state?"
+      ],
+      "returns": [
+        "ids",
+        "states",
+        "stats_incomplete"
+      ],
+      "note": "state is a list of states; follow next_cursor to the end. ids and states are every close's, in the order served; stats_incomplete is the stats row's incomplete count"
+    },
+    "tenant.service_agreement": {
+      "args": [],
+      "returns": [
+        "due",
+        "held",
+        "plan",
+        "plan_change_state",
+        "plan_change_to",
+        "documents",
+        "accept_url"
+      ],
+      "note": "what the organisation must still accept (GET /tenant/service-agreement). plan_change_state and plan_change_to are the plan change's state and to, null when there is none; documents is each document due's key, in order"
+    },
+    "agreement.due_warnings": {
+      "args": [
+        "terminal_id",
+        "clients",
+        "calls"
+      ],
+      "returns": [
+        "warnings"
+      ],
+      "note": "build clients clients, one after another, and make terminals.get(terminal_id) calls times through each, capturing what the SDK logs. warnings is the number of warnings it logged, over every client, that a Service Agreement is due (the MFX-Service-Agreement header). An SDK warns once per client, the first time it sees the header, never once per answer"
     }
   },
   "markers": {
@@ -232,6 +424,8 @@
     "MaintenanceError",
     "NotFoundError",
     "ConflictError",
+    "ServiceAgreementNotAcceptedError",
+    "TermsNotAcceptedError",
     "StateError",
     "PlacementError",
     "UnsupportedBrokerError",

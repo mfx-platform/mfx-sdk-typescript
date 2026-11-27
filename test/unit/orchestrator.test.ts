@@ -116,11 +116,11 @@ const action = {
   finished_at: null,
 };
 
-describe("a bulk restart or retire is one request answered with the action, and is followed and cancelled by its id", () => {
+describe("a bulk restart is one request answered with the action, and is followed and cancelled by its id", () => {
   it("sends the asks to their routes", async () => {
     const net = fake(
       json(202, action),
-      json(202, { ...action, kind: "retire" }),
+      json(202, action),
       json(200, action),
       json(200, { ...action, state: "CANCELLED" }),
     );
@@ -131,7 +131,7 @@ describe("a bulk restart or retire is one request answered with the action, and 
       idempotencyKey: "bulk-1",
     });
     expect(restart.refused).toEqual([{ terminal_id: TERMINAL, code: "positions_open" }]);
-    await c.terminals.bulkRetire({
+    await c.terminals.bulkRestart({
       reason: "done",
       terminalIds: [TERMINAL],
       confirmOpenPositions: true,
@@ -146,7 +146,7 @@ describe("a bulk restart or retire is one request answered with the action, and 
 
     expect(net.calls.map((x) => [x.init.method, x.url.pathname])).toEqual([
       ["POST", "/v1/terminals:restart"],
-      ["POST", "/v1/terminals:retire"],
+      ["POST", "/v1/terminals:restart"],
       ["GET", `/v1/bulk-actions/${ACTION}`],
       ["POST", `/v1/bulk-actions/${ACTION}/cancel`],
     ]);
@@ -162,6 +162,7 @@ describe("a bulk restart or retire is one request answered with the action, and 
     });
     const headers = new Headers(net.calls[0]?.init.headers);
     expect(headers.get("idempotency-key")).toBe("bulk-1");
+    expect("bulkRetire" in c.terminals).toBe(false);
   });
 
   it("narrows by broker as by farm", async () => {
@@ -188,10 +189,10 @@ describe("a bulk restart or retire is one request answered with the action, and 
       c.terminals.bulkRestart({ reason: " ", farmId: FARM, idempotencyKey: "k" }),
     ).rejects.toBeInstanceOf(RangeError);
     await expect(
-      c.terminals.bulkRetire({ reason: "x", farmId: FARM, idempotencyKey: "" }),
+      c.terminals.bulkRestart({ reason: "x", farmId: FARM, idempotencyKey: "" }),
     ).rejects.toBeInstanceOf(RangeError);
     await expect(
-      c.terminals.bulkRetire({
+      c.terminals.bulkRestart({
         reason: "x",
         terminalIds: Array.from({ length: 1001 }, () => TERMINAL),
         idempotencyKey: "k",

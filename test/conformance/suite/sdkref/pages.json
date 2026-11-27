@@ -1,0 +1,62 @@
+[
+  {
+    "id": "client",
+    "title": "Client and signing",
+    "summary": "Create a client with your API key, sign every request and choose how it retries."
+  },
+  {
+    "id": "terminals",
+    "title": "Terminals",
+    "summary": "Provision, start, stop and watch the terminals your accounts trade through."
+  },
+  {
+    "id": "execution",
+    "title": "Execution",
+    "summary": "Place, change and close orders and positions, each sent exactly once."
+  },
+  {
+    "id": "trading-accounts",
+    "title": "Trading accounts",
+    "summary": "Every trading account on every venue: its state, funds and positions, and the orders placed on it."
+  },
+  {
+    "id": "accounts",
+    "title": "Accounts and catalogue",
+    "summary": "Read a terminal's account, positions, orders and deals, and the brokers, servers and symbols on offer."
+  },
+  {
+    "id": "market-data",
+    "title": "Market data",
+    "summary": "Read prices and price history for a symbol, as exact decimals."
+  },
+  {
+    "id": "stream",
+    "title": "Stream and live account",
+    "summary": "Follow prices, account changes and events live over one connection that resumes on its own."
+  },
+  {
+    "id": "risk",
+    "title": "Risk",
+    "summary": "Set the rules that guard an account, plan trades within them, and read what they did and why."
+  },
+  {
+    "id": "copy",
+    "title": "Copy trading",
+    "summary": "Make leaders, follow them with a mandate, and read what was copied and what was refused."
+  },
+  {
+    "id": "billing",
+    "title": "Billing",
+    "summary": "Read your prices, balance, forecast to month end and invoices."
+  },
+  {
+    "id": "tenant",
+    "title": "Tenant",
+    "summary": "Your organisation: its limits and usage, and the agreements it has to accept."
+  },
+  {
+    "id": "errors",
+    "title": "Errors",
+    "summary": "Every error a call can raise, the API code it carries and what to do about it."
+  }
+]

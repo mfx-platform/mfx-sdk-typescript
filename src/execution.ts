@@ -54,7 +54,10 @@ export interface PlaceOrder {
   readonly expiresInMs?: number;
   /** The expert advisor number the order is tagged with. */
   readonly magic?: number;
-  /** Up to 31 characters; longer is refused, because MT5 would cut it without saying so. */
+  /**
+   * Up to 31 characters, counted in code points (an emoji is one); longer is refused, because the
+   * terminal would cut it without saying so.
+   */
   readonly comment?: string;
 }
 
@@ -78,9 +81,7 @@ function orderBody(order: PlaceOrder): Partial<OrderPlace> {
   if (typeof order.symbol !== "string" || order.symbol === "") {
     throw new TypeError("symbol is the broker's symbol name");
   }
-  if (order.comment !== undefined && order.comment.length > 31) {
-    throw new RangeError("comment is at most 31 characters; MT5 would cut a longer one");
-  }
+  if (order.comment !== undefined) commentOf(order.comment);
   const expiresAt =
     order.expiresAt instanceof Date ? order.expiresAt.toISOString() : order.expiresAt;
   const optional = {
@@ -132,7 +133,10 @@ export interface ModifyPosition extends Keyed {
 export interface ClosePosition extends Keyed {
   /** How far from the price the close may fill, in points; the platform's default is 20. */
   readonly deviationPoints?: number;
-  /** The closing deal's comment, up to 31 characters; absent, it takes the position's own. */
+  /**
+   * The closing deal's comment, up to 31 characters counted in code points; absent, it takes the
+   * position's own.
+   */
   readonly comment?: string;
 }
 
@@ -169,7 +173,7 @@ export const POLL_CAP_MS = 2000;
 
 function ticketOf(name: string, value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
-    throw new TypeError(`${name} is a positive whole number, the ticket MT5 gave`);
+    throw new TypeError(`${name} is a positive whole number, the ticket the terminal gave`);
   }
   return value;
 }
@@ -177,8 +181,13 @@ function ticketOf(name: string, value: unknown): number {
 function commentOf(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") throw new TypeError("comment is a string");
-  if (value.length > 31) {
-    throw new RangeError("comment is at most 31 characters; MT5 would cut a longer one");
+  // Counted in code points, as the contract's maxLength counts: an emoji is one
+  // character, though .length counts two UTF-16 units for it.
+  const given = Array.from(value).length;
+  if (given > 31) {
+    throw new RangeError(
+      `comment is at most 31 characters; the terminal would cut a longer one (${given} given)`,
+    );
   }
   return value;
 }

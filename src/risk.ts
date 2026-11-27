@@ -247,6 +247,19 @@ export class Risk {
     return this.#write("POST", `/risk/policies/${id}/versions`, options.idempotencyKey, body);
   }
 
+  /**
+   * Archive the policy: it can no longer be activated or given a new version. Refused 409
+   * `state_error` (a `StateError`) while any account holds it, active or paused, with
+   * `details.accounts` naming them; archiving it again answers it unchanged.
+   */
+  async archivePolicy(
+    policyId: string,
+    options: { readonly idempotencyKey: string },
+  ): Promise<RiskPolicy> {
+    const id = uuid("policyId", policyId);
+    return this.#write("POST", `/risk/policies/${id}/archive`, options.idempotencyKey);
+  }
+
   /** Put a version in force on accounts; each account's outcome separately. */
   async activate(
     policyId: string,
@@ -496,6 +509,19 @@ export class Risk {
       options.idempotencyKey,
       wire("rules", rules),
     );
+  }
+
+  /**
+   * Archive the challenge: no account can be enrolled in it or given a new version of it. Refused
+   * 409 `state_error` (a `StateError`) while any account is in progress, with `details.accounts`
+   * naming them; archiving it again answers it unchanged.
+   */
+  async archiveChallenge(
+    challengeId: string,
+    options: { readonly idempotencyKey: string },
+  ): Promise<RiskChallenge> {
+    const id = uuid("challengeId", challengeId);
+    return this.#write("POST", `/risk/challenges/${id}/archive`, options.idempotencyKey);
   }
 
   /** A challenge, its current rule set and its counts. */

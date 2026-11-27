@@ -291,7 +291,7 @@ describe("a wrong order argument is refused before anything is sent", () => {
     ["no idempotency key", { idempotencyKey: undefined }, TypeError],
     ["a side that is neither", { side: "long" }, TypeError],
     ["no symbol", { symbol: "" }, TypeError],
-    ["a comment MT5 would cut", { comment: "x".repeat(32) }, RangeError],
+    ["a comment the terminal would cut", { comment: "x".repeat(32) }, RangeError],
     ["a fractional deviation", { deviationPoints: 1.5 }, TypeError],
     ["a hold outside 1 to 60 s", { expiresInMs: 500 }, RangeError],
     ["a negative magic number", { magic: -1 }, RangeError],

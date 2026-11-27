@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mfx-platform/mfx-sdk-conformance/sdkref/sdkref.schema.json",
+  "title": "MFX Hub SDK reference, format mfx-sdkref/1",
+  "description": "docs/sdkref.json: one SDK's public surface, generated from its own source, which the docs site renders one page per page id. Page titles and summaries come from pages.json beside this file, not from the SDK. An optional key is omitted when it has nothing in it: never null, never an empty list or object.",
+  "type": "object",
+  "required": ["format", "language", "package", "version", "install", "pages"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "mfx-sdkref/1" },
+    "language": { "enum": ["python", "typescript", "csharp", "java"] },
+    "package": { "type": "string", "minLength": 1 },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "install": { "type": "string", "minLength": 1, "pattern": "^[^\\n]+$" },
+    "links": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "package": { "type": "string", "pattern": "^https://[^\\s]+$" },
+        "source": { "type": "string", "pattern": "^https://[^\\s]+$" }
+      }
+    },
+    "pages": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/page" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "language": { "const": "python" } } },
+      "then": { "properties": { "package": { "const": "mfx-sdk" } } }
+    },
+    {
+      "if": { "properties": { "language": { "const": "typescript" } } },
+      "then": { "properties": { "package": { "const": "@mfxhub/sdk" } } }
+    },
+    {
+      "if": { "properties": { "language": { "const": "csharp" } } },
+      "then": { "properties": { "package": { "const": "MfxHub.Sdk" } } }
+    },
+    {
+      "if": { "properties": { "language": { "const": "java" } } },
+      "then": {
+        "properties": {
+          "package": {
+            "$comment": "the Maven coordinates, groupId:artifactId",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*:[a-z][a-z0-9_.-]*$"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "markdown": {
+      "description": "Markdown: cross-references are exactly [Name](#anchor), no raw HTML, anything with < or > in a code span.",
+      "type": "string"
+    },
+    "display": {
+      "description": "Display text on one line, never parsed.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\n\\r]+$"
+    },
+    "page": {
+      "type": "object",
+      "required": ["id", "intro", "types"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "enum": [
+            "client",
+            "terminals",
+            "execution",
+            "trading-accounts",
+            "accounts",
+            "market-data",
+            "stream",
+            "risk",
+            "copy",
+            "billing",
+            "tenant",
+            "errors"
+          ]
+        },
+        "intro": { "$ref": "#/$defs/markdown" },
+        "types": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/type" } }
+      }
+    },
+    "type": {
+      "type": "object",
+      "required": ["anchor", "kind", "name", "signature", "doc"],
+      "additionalProperties": false,
+      "properties": {
+        "anchor": {
+          "description": "<page id>.<Type>",
+          "type": "string",
+          "pattern": "^[a-z]+(-[a-z]+)*\\.[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "kind": {
+          "enum": ["class", "interface", "record", "enum", "error", "constant", "alias", "function"]
+        },
+        "name": { "$ref": "#/$defs/display" },
+        "signature": { "$ref": "#/$defs/display" },
+        "doc": { "$ref": "#/$defs/markdown" },
+        "extends": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/display" }
+        },
+        "code": {
+          "description": "The API error code this error maps; only on kind error, absent for a base class with no single code.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "schema": {
+          "description": "The contract schema this type represents, exactly as a key of components.schemas in the API description, case kept; the docs site links the type to /docs/objects#<schema>. Not on kind function.",
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+        },
+        "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/member" } },
+        "params": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/param" } },
+        "returns": { "$ref": "#/$defs/returns" },
+        "raises": { "$ref": "#/$defs/raises" },
+        "operation": { "$ref": "#/$defs/operation" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "error" } } },
+          "else": { "not": { "required": ["code"] } }
+        },
+        {
+          "$comment": "params, returns, raises and operation describe a call: only a kind function type has them.",
+          "if": { "properties": { "kind": { "const": "function" } } },
+          "else": {
+            "allOf": [
+              { "not": { "required": ["params"] } },
+              { "not": { "required": ["returns"] } },
+              { "not": { "required": ["raises"] } },
+              { "not": { "required": ["operation"] } }
+            ]
+          }
+        },
+        {
+          "$comment": "a function is a call, not a contract object: it names no schema.",
+          "if": { "properties": { "kind": { "const": "function" } } },
+          "then": { "not": { "required": ["schema"] } }
+        }
+      ]
+    },
+    "returns": {
+      "type": "object",
+      "required": ["type", "doc"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "$ref": "#/$defs/display" },
+        "doc": { "$ref": "#/$defs/markdown" }
+      }
+    },
+    "raises": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["type", "doc"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "$ref": "#/$defs/display" },
+          "doc": { "$ref": "#/$defs/markdown" }
+        }
+      }
+    },
+    "operation": {
+      "description": "The contract operationId the member or function calls.",
+      "type": "string",
+      "pattern": "^[a-z][A-Za-z0-9]*$"
+    },
+    "member": {
+      "type": "object",
+      "required": ["anchor", "kind", "name", "signature", "doc"],
+      "additionalProperties": false,
+      "properties": {
+        "anchor": {
+          "description": "<page id>.<Type>.<member>",
+          "type": "string",
+          "pattern": "^[a-z]+(-[a-z]+)*\\.[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "kind": { "enum": ["method", "property", "field", "constructor", "value"] },
+        "name": { "$ref": "#/$defs/display" },
+        "signature": { "$ref": "#/$defs/display" },
+        "doc": { "$ref": "#/$defs/markdown" },
+        "params": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/param" } },
+        "returns": { "$ref": "#/$defs/returns" },
+        "raises": { "$ref": "#/$defs/raises" },
+        "operation": { "$ref": "#/$defs/operation" },
+        "deprecated": { "type": "string", "minLength": 1 }
+      }
+    },
+    "param": {
+      "type": "object",
+      "required": ["name", "type", "doc"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/display" },
+        "type": { "$ref": "#/$defs/display" },
+        "default": { "$ref": "#/$defs/display" },
+        "doc": { "$ref": "#/$defs/markdown" }
+      }
+    }
+  }
+}

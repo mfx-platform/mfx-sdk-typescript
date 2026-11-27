@@ -66,6 +66,9 @@ logged in to.
 | Catalogue | `quote`                                                                               |
 | Stream    | `client.stream()`: events, results, account, ticks, candles, book and expert channels |
 | Risk      | `client.risk`: policies, accounts, the planner, exit plans, challenges and activity   |
+| Copy      | `client.copy`: leaders, signals, followers, groups, requested closes and the copy log |
+| Billing   | `client.billing`: standing, profiles, forecast, prices, the price list and invoices   |
+| Tenant    | `client.tenant.serviceAgreement()`: the Service Agreement or Terms still to accept    |
 
 Submitting a terminal's login, farms, account reads, market-data subscriptions and the rest of
 order management are next. Until then the [Python SDK](https://github.com/mfx-platform/mfx-sdk-python)
@@ -78,6 +81,30 @@ and the API itself cover them. The full API is described at [docs.mfxhub.com](ht
   after the order was sent reads `UNKNOWN` and `retryable: false`.
 - **Prices, volumes and money are decimal strings.** A JavaScript number is refused before anything
   is sent, because `0.07 * 3` is `0.21000000000000002`.
+
+An answer may carry an enum word this version's types do not list, such as a close `cause` added by
+a newer API. It reads as the word itself and the call does not fail; a newer SDK names it in its
+types. A word you send is still checked against the list.
+
+## When an agreement is due
+
+When your organisation moves plan, or a Service Agreement or Terms version asks to be accepted,
+every answer carries `MFX-Service-Agreement: due` and the client warns once (`console.warn`).
+Once it holds, **only additions are refused**: a new terminal, attaching an expert advisor, a new
+or replaced API key and higher limits answer `ServiceAgreementNotAcceptedError` or
+`TermsNotAcceptedError` (409). Reads, orders, positions and everything already running keep
+working. An owner or admin accepts in the customer portal; then send the request again.
+
+```ts
+try {
+  await client.terminals.create({ brokerId, serverId, idempotencyKey: "terminal-1" });
+} catch (error) {
+  if (error instanceof ServiceAgreementNotAcceptedError) {
+    console.log(error.planChange?.to, error.documents, error.acceptUrl);
+  }
+}
+const due = await client.tenant.serviceAgreement(); // due, held, plan_change, documents, accept_url
+```
 
 ## Developing
 

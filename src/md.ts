@@ -86,7 +86,7 @@ export class MarketData {
   /**
    * Stream one symbol's spots of one cTrader account (`md:write`). `symbol` is the account's own
    * name for it. Created at once, `pending` until the first spot. Sent once and never retried;
-   * the same `idempotencyKey` again answers the same subscription. An MT5 account is a
+   * the same `idempotencyKey` again answers the same subscription. A terminal's account is a
    * `StateError` (`details.reason` `not_on_this_venue`); another tenant's, or none, is a
    * `NotFoundError`. Stop it with {@link MarketData.unsubscribe}.
    */
@@ -157,7 +157,7 @@ export class MarketData {
    * when the window reaches now. Nothing is stored: each read goes through the account's runner
    * and counts against the same per-terminal limit a minute as the server-keyed read. A 429 is
    * retried after its `Retry-After` and thrown as `RateLimitError` once the retries run out; an
-   * account with no runner connected is `UpstreamError` (503); an MT5 account is a `StateError`
+   * account with no runner connected is `UpstreamError` (503); a terminal's account is a `StateError`
    * (`not_on_this_venue`). No bar in the window is an empty list.
    */
   async accountCandles(accountId: string, options: AccountCandlesOptions): Promise<CandleList> {

@@ -4,6 +4,160 @@ Every release of `@mfxhub/sdk`, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+## 0.9.0
+
+### Added
+
+- `docs/sdkref.json`, the SDK reference in format `mfx-sdkref/1`, generated from the public
+  exports by `node tools/sdkref.mjs` (TypeDoc reads the source). The docs site renders it one page
+  per area with the other languages. CI regenerates it and fails on any difference, and validates
+  it with the shared suite's checker. A free function carries its parameters and return, and every
+  default value is written in full.
+- A type in `docs/sdkref.json` that is one object of the API carries `schema`, the name of that
+  object in the API description, so the docs site links it to the object's reference. It is read
+  from the source for an alias of a generated contract type and listed by hand for the few
+  hand-written ones; a client, an error or a function never carries one.
+
+- `client.risk.archiveChallenge(challengeId, { idempotencyKey })` archives a challenge
+  (`POST /risk/challenges/{id}/archive`, `risk:write`). It is refused with `StateError`
+  (`state_error`) while any account is in progress, and `details.accounts` names them. Archiving
+  it again answers it unchanged. `RiskChallenge` gains `archived_at`, and the planner's check and
+  preview rows (`RiskRuleCheck`) gain `challenge_id`.
+- Billing, as `client.billing`, reads every `billing` route of the API (scope `billing:read`):
+  `priceList()` (the public price list, which needs no key and is signed like every request),
+  `summary()` (`GET /billing`: every profile with its standing), `profile(id)`,
+  `forecast(profileId, { month })`, `prices()`, `invoice(id)`, and the invoices as
+  `invoicesPage({ billingProfileId, state, cursor, limit })` or `invoices(...)`, which follows the
+  cursor. `state` is one state or several, sent comma-separated and checked here. Each answers the
+  API's own model; amounts stay exact decimal strings.
+- `PaymentRequiredError`, the class for any 402, and beneath it `BillingPaymentRequiredError` for
+  `billing_payment_required`: a payment is missing on the billing profile. Not retryable
+  unchanged. Its `tenantId`, `billingProfileId`, `stage` (`reminder` or `suspended`), `billingCause`,
+  `since`, `suspendsAt`, `payBy` (as `Date`s) and `action` (a `BillingAction`: `kind`,
+  `portalPath`, `amountUsd` as the exact decimal string, `invoiceId`) are read from `details`,
+  null where absent or unreadable. An execution method refused for billing resolves to a refused
+  `ExecutionResult` with the error's message in `detail`, as for every refusal, and never rejects.
+- Service Agreements. Each plan has its own Service Agreement, and a plan change
+  waits for the new plan's to be accepted. While one is due the platform holds additions only:
+  - `ServiceAgreementNotAcceptedError` (a `ConflictError`) for 409 `service_agreement_not_accepted`:
+    adding a terminal, attaching an expert advisor, generating or replacing an API key or asking
+    for higher limits while a plan change awaits acceptance or a Service Agreement version is past
+    its grace period. `planChange` (a `PlanChange`: `id`, `from`, `to`, `state`, `requestedAt`,
+    `until` as `Date`s, `requestedByOperator`; null when there is no change), `documents` and
+    `acceptUrl` are read from `details`. Python calls it `ServiceAgreementNotAccepted`.
+  - `TermsNotAcceptedError` (a `ConflictError`) for 409 `terms_not_accepted`, which arrived as a
+    plain `ConflictError` before, with `documents` read from `details`. Python calls it
+    `TermsNotAccepted`.
+  - Both read `documents` as `DueDocument`s: `document` (an open list of keys), `number`, `plan`
+    and `graceEndsAt` as a `Date` (from `grace_ends_at`, when the grace period ends or ended).
+    An entry without a document key is skipped; anything missing
+    or unreadable is null, never an error of the SDK's own. Not retryable unchanged.
+  - `client.tenant.serviceAgreement()` reads `GET /tenant/service-agreement` (any key): `due`,
+    `held`, `plan`, `plan_change`, `documents` and `accept_url`, the API's own model.
+  - The first answer carrying `MFX-Service-Agreement: due` logs one `console.warn` per client
+    (`SERVICE_AGREEMENT_WARNING`); that client never warns again. A console that throws never
+    fails the call.
+
+### Changed
+
+- An order's or a close's comment over 31 characters is refused with "comment is at most 31
+  characters; the terminal would cut a longer one (N given)".
+- The shared test suite is 0.13.0, whose cases answer enum words the API description does not
+  list. This SDK already read such a word as the word itself, without failing the call; it is now
+  held to that, and the README says so.
+
+### Fixed
+
+- An order's or a close's comment is counted in code points, as the API's limit and the Python SDK
+  count it, not in UTF-16 units: a comment of up to 31 characters with emoji in it is sent, no
+  longer refused. A longer one is refused with `RangeError`, which now says how many were given.
+
+## 0.8.0
+
+### Added
+
+- Copy Trading, as `client.copy`, over every `/copy` route of the API (scopes `copy:read` and
+  `copy:write`). Leaders: `createLeader`, `getLeader`, `leadersPage` / `leaders`, `updateLeader`,
+  `pauseLeader`, `resumeLeader`, `retireLeader({ closeCopied, reason })`, and an external
+  leader's `sendOpenSignal` (exactly one of `volume` and `units`) and `sendCloseSignal`.
+  Followers: `createFollower`, `previewFollower` (a read: no idempotency key), `getFollower`,
+  `followersPage` / `followers`, `updateFollower`, `pauseFollower`, `resumeFollower`,
+  `resyncFollower` and `unfollow({ closeCopied })`; their stop-outs: `stopoutsPage` / `stopouts`
+  and `resetStopouts({ reason })`. Groups: `createGroup`, `getGroup`, `groupsPage` / `groups`,
+  `updateGroup`, `addGroupFollowers`, `removeGroupFollowers`, `pauseGroup` and `resumeGroup`. The
+  copy log: `logPage` / `log`, with its filters (each list sent comma-separated and checked here),
+  its window and its order. Every write takes an `idempotencyKey` and is never retried; a number
+  with a fraction anywhere in a body is refused before anything is sent. An open signal's `sl`
+  and `tp` may be below zero, as the API's decimals allow; `volume`, `units` and
+  `grossExposureCap` may not.
+- `options` (a follower's, a preview's and a group template's) takes `when_risk_unchecked`:
+  `"refuse"` (the default) or `"copy"`, for a follower account protected by Risk Management whose
+  copy host cannot yet check a copy against it. Its type is the API description's, on what is sent
+  and on a follower read back; any other word is refused before sending.
+- Requested closes and groups' bulk work: `closeGroup(groupId, { reason, pause })` (`pause` has
+  no default) closes the copied positions of every live member under one `batch_id`;
+  `rolloverGroup(groupId, { dryRun, fields, after, limit })` sets the group's template on its
+  members, a dry run with no key and an applied one with its `idempotencyKey` (checked before
+  sending); `closesPage` / `closes` (by follower, leader, group, batch, state and window) and
+  `getClose` follow each requested close, an unfollow's or a retire's with `closeCopied` among
+  them.
+- The tenant's reads: `signalsPage` / `signals` (the leaders' signals with each one's outcomes)
+  and `tenantStopoutsPage` / `tenantStopouts` (every stop-out of the followers), by their filters
+  and a window.
+- `followersPage` / `followers` take `sort` (`"newest"` or `"oldest"`) and `outOfStep`;
+  `logPage` / `log` take `groupId`. The types carry the contract's final shapes: a follower's
+  `drift`, `limits_use`, `today`, `exposure` and requested `close`; a group's `exposure` against
+  its cap (USD, an equal share per live member, with `leavers` and `unenforced`); a log row's
+  `deal`, `symbol` and Risk `risk`; the log's p95s; a preview row's contract sizes and volume unit.
+- `CopyPage`: a list page with its `stats` row, counted over everything the filters match.
+- `REFUSAL_REASONS`: the closed list of reasons a copy did not fill.
+- The `copy.*` events: `copyEventOf(message)` reads `copy.copied`, `copy.refused`,
+  `copy.stopout`, `copy.drift`, `copy.state_changed` and `copy.closed` (`CopyClosedEvent`: a
+  requested close is final) as a `CopyEvent` narrowed by its `type`, each payload in the API's own
+  shape (`latency_ms` and the stage timings are numbers; a Risk refusal's `risk` an object);
+  `COPY_EVENT_TYPES` lists them.
+- `client.risk.archivePolicy(policyId, { idempotencyKey })` archives a policy
+  (`POST /risk/policies/{id}/archive`, `risk:write`). It is refused with `StateError`
+  (`state_error`) while any account holds the policy, and `details.accounts` names those accounts.
+  Once archived, a policy can't be activated or versioned, and archiving it again answers it
+  unchanged. `RiskPolicy` gains `archived_at`, null while the policy is active.
+
+### Changed
+
+- The conformance suite is pinned at 0.8.0: its Copy Trading cases run.
+- `CopyEvent` has a sixth member, `copy.closed`: code that handles the union's last case with a
+  bare `else` should name `copy.state_changed` there and handle `copy.closed` apart.
+- `createGroup` and `updateGroup` still take `placementPolicy`, which the API now marks
+  deprecated: it is stored and returned, and placement never reads it.
+- Contract refresh: `spec/openapi.yaml` is the public API description with Copy Trading's final
+  shape, and `src/generated/api.ts` is regenerated from it.
+
+## 0.7.1
+
+### Changed
+
+- The errors follow the reference SDK (Python) exactly. A 413 with no MFX Hub code is now an
+  `MfxApiError`, not a `ValidationError`: the platform answers no 413 of its own, so one is the
+  network's edge. A `Retry-After` given as an HTTP date is not read (`retryAfterS` is null and a
+  read retried after it waits the client's backoff): the API writes whole seconds only.
+
+## 0.7.0
+
+### Removed
+
+- `terminals.bulkRetire(...)`. MFX Hub does not serve a tenant's bulk retire and will not: the call
+  always answered 404. The API description keeps `POST /terminals:retire` only as deprecated,
+  because v1 changes are additive. To retire many terminals, send `DELETE /v1/terminals/{id}` for
+  each, signed with `RequestSigner` as every request is. `terminals.bulkRestart`, `getBulkAction` and
+  `cancelBulkAction` are unchanged.
+
+### Changed
+
+- The generated types follow the refreshed API description, which adds the advisor
+  parameter-definition routes (`/expert-advisors/{id}/parameter-definitions`).
+
 ## 0.6.0
 
 ### Added

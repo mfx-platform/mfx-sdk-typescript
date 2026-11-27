@@ -5,3 +5,4 @@ spec/
 package-lock.json
 test/conformance/suite/
 .hub/
+docs/sdkref.json

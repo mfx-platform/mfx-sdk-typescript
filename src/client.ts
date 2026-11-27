@@ -15,12 +15,15 @@ import {
 } from "./errors.js";
 import { RequestSigner, type SigningKey } from "./signing.js";
 import { Accounts } from "./accounts.js";
+import { Billing } from "./billing.js";
 import { Catalog } from "./catalog.js";
+import { Copy } from "./copy.js";
 import { Execution } from "./execution.js";
 import { MfxStream, type StreamOptions } from "./stream.js";
 import { Terminals } from "./terminals.js";
 import { MarketData } from "./md.js";
 import { Risk } from "./risk.js";
+import { Tenant } from "./tenant.js";
 import { TradingAccounts } from "./trading-accounts.js";
 import { USER_AGENT } from "./version.js";
 
@@ -40,6 +43,18 @@ const NOT_SENT = new Set([
   "EHOSTUNREACH",
   "UND_ERR_CONNECT_TIMEOUT",
 ]);
+
+/**
+ * The header every answer carries while the organisation has a Service Agreement (or the Terms)
+ * to accept. Its one value is `due`.
+ */
+export const SERVICE_AGREEMENT_HEADER = "MFX-Service-Agreement";
+
+/** What the client warns, once, the first time an answer says something is due. */
+export const SERVICE_AGREEMENT_WARNING =
+  "MFX Hub: your organisation has a Service Agreement or Terms to accept (MFX-Service-Agreement: due). " +
+  "Adding terminals, expert advisors and API keys is refused once it holds, until an owner or admin " +
+  "accepts it in the customer portal; client.tenant.serviceAgreement() says what is due.";
 
 /** The environment variable naming a file to append one JSON line to for every HTTP attempt. */
 export const CALL_LOG_ENV = "MFX_CALL_LOG";
@@ -120,6 +135,7 @@ export class MfxClient {
   readonly #now: () => number;
   readonly #callLog: string | undefined;
   #budget: Budget | null = null;
+  #warnedServiceAgreement = false;
 
   /** The terminals this key's tenant owns. */
   readonly terminals: Terminals;
@@ -129,12 +145,18 @@ export class MfxClient {
   readonly catalog: Catalog;
   /** The trading account behind a terminal: figures, positions, pending orders and deals. */
   readonly accounts: Accounts;
-  /** The trading accounts over every venue: an MT5 account, and later a cTrader one. */
+  /** The trading accounts over every venue: a terminal's account, and a cTrader account. */
   readonly tradingAccounts: TradingAccounts;
   /** Market data by a cTrader account: subscriptions and candles. */
   readonly md: MarketData;
   /** Risk Management: account rules, the planner, exit plans and challenges. */
   readonly risk: Risk;
+  /** Copy Trading: leaders, followers, groups, stop-outs and the copy log. */
+  readonly copy: Copy;
+  /** Billing, read only (`billing:read`): standing, profiles, forecast, prices and invoices. */
+  readonly billing: Billing;
+  /** The calling key's organisation: what it must still accept. Any key may read it. */
+  readonly tenant: Tenant;
 
   /**
    * @param baseUrl the API's base, including the version: `https://api.mfxhub.com/v1`, or
@@ -165,6 +187,9 @@ export class MfxClient {
     this.tradingAccounts = new TradingAccounts(this);
     this.md = new MarketData(this);
     this.risk = new Risk(this);
+    this.copy = new Copy(this);
+    this.billing = new Billing(this);
+    this.tenant = new Tenant(this);
   }
 
   /** The id of the key this client signs with. Safe to log, unlike the private key. */
@@ -276,6 +301,7 @@ export class MfxClient {
   async #answer(response: Response): Promise<Answer> {
     const text = await response.text();
     this.#noteBudget(response.headers);
+    this.#noteServiceAgreement(response.headers);
     let parsed: unknown = null;
     if (text !== "") {
       try {
@@ -316,6 +342,21 @@ export class MfxClient {
         remaining: Number(remaining),
         source: headers.get("X-MFX-Budget-Source") ?? "",
       };
+    }
+  }
+
+  /**
+   * Warn once per client, the first time an answer says a Service Agreement is due; never again on
+   * this client. Never throws: a console that cannot be written is no reason to fail a call.
+   */
+  #noteServiceAgreement(headers: Headers): void {
+    if (this.#warnedServiceAgreement) return;
+    if (headers.get(SERVICE_AGREEMENT_HEADER)?.trim().toLowerCase() !== "due") return;
+    this.#warnedServiceAgreement = true;
+    try {
+      console.warn(SERVICE_AGREEMENT_WARNING);
+    } catch {
+      // The warning is advice; the call it rode on still answers.
     }
   }
 

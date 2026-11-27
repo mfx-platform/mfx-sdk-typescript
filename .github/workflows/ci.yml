@@ -87,6 +87,13 @@ jobs:
         run: npm ci
       - name: The generated types match spec/openapi.yaml
         run: npm run check:gen
+      - name: docs/sdkref.json matches the source
+        run: node tools/sdkref.mjs --check
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: docs/sdkref.json passes the shared suite's checker
+        run: python test/conformance/suite/sdkref/check_sdkref.py --spec spec/openapi.yaml docs/sdkref.json
       - name: The repository
         run: node tools/check-public.mjs --tree .
       - name: What npm would publish

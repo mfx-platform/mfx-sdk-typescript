@@ -155,7 +155,7 @@ export interface paths {
     put?: never;
     /**
      * Stream one symbol's spots of one of your cTrader accounts; state pending until its first spot
-     * @description The cTrader counterpart of `POST /md/subscriptions`, keyed on the account instead of a server. The platform subscribes the symbol's spots on that account at Spotware, and they stream on the `md:{account_id}:{symbol}` channel as `md.tick`. Two of your accounts at one broker and environment share one stream. A resource, not a command: it is created at once, `pending` until the first spot arrives. One per account and symbol: asking again answers the live one; asking after a stop reopens it. Stopped with `DELETE /md/subscriptions/{id}`. Another tenant's account, or none, is 404; an MT5 account is 409 `state_error` with `details.reason` `not_on_this_venue` (it streams its server: `POST /md/subscriptions`).
+     * @description The cTrader counterpart of `POST /md/subscriptions`, keyed on the account instead of a server. The platform subscribes the symbol's spots on that account at Spotware, and they stream on the `md:{account_id}:{symbol}` channel as `md.tick`. With `timeframes`, each timeframe's closed bars stream on `candles:{account_id}:{symbol}:{tf}` as `md.candle_closed`, each bar once, and are kept in the platform's store. Two of your accounts at one broker and environment share one stream. A resource, not a command: it is created at once, `pending` until the first spot arrives. One per account and symbol: asking again answers the live one; asking after a stop reopens it. Stopped with `DELETE /md/subscriptions/{id}`. Another tenant's account, or none, is 404; an MT5 account is 409 `state_error` with `details.reason` `not_on_this_venue` (it streams its server: `POST /md/subscriptions`).
      */
     post: operations["createAccountSubscription"];
     delete?: never;
@@ -180,8 +180,8 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Historical candles of one of your cTrader accounts by bar time, read from Spotware through the account; at most 1000 bars per call, the newest of the window
-     * @description The cTrader counterpart of `GET /md/candles`, keyed on the account instead of a broker and server. The bars are Spotware's trendbars for the account's own symbol name (`GET /accounts/{id}/symbols`), in UTC, `v` the bar's tick volume, oldest first, the forming bar included when the window reaches now. `source` is `terminal`: the account's runner read them, and nothing is stored. The read counts against the same per-terminal limit a minute as `GET /md/candles` (429 `terminal_reads_limit`). Another tenant's account, or none, is 404; an unknown symbol is 404; an MT5 account is 409 `state_error` with `details.reason` `not_on_this_venue` (its candles are its server's: `GET /md/candles`).
+     * Historical candles of one of your cTrader accounts by bar time, from the platform's store when it holds the window, else read from Spotware through the account; at most 1000 bars per call, the newest of the window
+     * @description The cTrader counterpart of `GET /md/candles`, keyed on the account instead of a broker and server. The bars are Spotware's trendbars for the account's own symbol name (`GET /accounts/{id}/symbols`), in UTC, `v` the bar's tick volume, oldest first, the forming bar included when the window reaches now. `source` says where they came from, as on `GET /md/candles`: `store` when the platform's store holds the window complete (no read of Spotware), `terminal` when the account's runner read them, `store+terminal` for closed bars from the store and the forming bar through the runner; `complete_from` and `complete_to` are the span the store vouches for. The store is kept by the broker and environment, so two of your accounts there read one store. A read through the runner counts against the same per-terminal limit a minute as `GET /md/candles` (429 `terminal_reads_limit`), and makes the series stored from then on. Another tenant's account, or none, is 404; an unknown symbol is 404; an MT5 account is 409 `state_error` with `details.reason` `not_on_this_venue` (its candles are its server's: `GET /md/candles`).
      */
     get: operations["getAccountCandles"];
     put?: never;
@@ -444,6 +444,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/accounts/ctrader/return-origins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The https origins a cTrader grant may send the trader back to
+     * @description Your registered return origins, like an OAuth client's redirect URIs. `enforced` says whether a grant's `return_url` is checked against them now: true once you list at least one.
+     */
+    get: operations["getCtraderReturnOrigins"];
+    /**
+     * Replace the https origins a cTrader grant may send the trader back to
+     * @description Replaces the whole list. Each origin is a scheme and host, and a port when it is not 443, with no path, query or fragment: `https://app.example.com`. MFX Hub stores each one with its host lower-cased and `:443` dropped, removes duplicates, and answers the list sorted, so what GET returns may differ in form from what you sent. An origin that does not match is 422 `validation_error` naming the item's index, and nothing is replaced. Once the list is not empty, starting a grant whose `return_url` has another origin is 400 `validation_error` with `details.reason` `return_url_unregistered`, before the trader is sent anywhere. An empty list removes them all. Grants already started are not checked again.
+     */
+    put: operations["setCtraderReturnOrigins"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/accounts/ctrader/grants/{id}/accounts": {
     parameters: {
       query?: never;
@@ -481,7 +505,7 @@ export interface paths {
     put?: never;
     /**
      * Provision a terminal — answered at once in state REQUESTED; the move to a cell is asynchronous
-     * @description A broker whose permission is `unknown` is accepted in the development environment with the response header `X-MFX-Warning: broker_permission_unknown`, and refused `broker_not_supported` in production. Refused at request time, never passed to a terminal: an unsupported broker or server (422), a farm that does not carry the usages (409), a redundancy the farm does not offer (409). The credential is submitted separately (`POST /terminals/{id}/credentials`), so a terminal can exist before its login does. Several terminals may use the same broker login, on every plan: the limits are checked when the credential is submitted. A tenant with its own farms (enterprise and system plans) names the farm of every terminal: omitted, it is 422 `farm_required` with `details.farms` listing its farms taking terminals. For a standard tenant `farm_id` is optional: omitted, the platform chooses a shared farm and says which on the answer; none fits is 409 `no_farm`, with `details.why` one of `no_usage` (no farm you can use offers what this terminal needs), `no_region` (none in the server's region) or `no_room`. `refresh_ms` faster than the farm's rate is 422 with `details.allowed`; with no farm named, only farms that allow the rate are considered. A changed rate a cell cannot carry is the PATCH's 409 `no_room`; create queues the terminal for placement. The tenant's plan decides the farm: enterprise and system tenants' terminals go to their own farms, standard tenants' to the shared farms. A named farm outside the plan is 409 `farm_not_in_plan`; with no farm named a standard tenant is given a shared farm. A tenant already at its terminal quota is 409 `quota_exceeded` with `details {quota, in_use}`.
+     * @description A broker whose permission is `unknown` is accepted in the development environment with the response header `X-MFX-Warning: broker_permission_unknown`, and refused `broker_not_supported` in production. Refused at request time, never passed to a terminal: an unsupported broker or server (422), a farm that does not carry the usages (409), a redundancy the farm does not offer (409). The credential is submitted separately (`POST /terminals/{id}/credentials`), so a terminal can exist before its login does. Several terminals may use the same broker login, on every plan: the limits are checked when the credential is submitted. A tenant with its own farms (enterprise and system plans) names the farm of every terminal: omitted, it is 422 `farm_required` with `details.farms` listing its farms taking terminals. For a standard tenant `farm_id` is optional: omitted, the platform chooses a shared farm and says which on the answer; none fits is 409 `no_farm`, with `details.why` one of `no_usage` (no farm you can use offers what this terminal needs), `no_region` (none in the server's region) or `no_room`. `refresh_ms` faster than the farm's rate is 422 with `details.allowed`; with no farm named, only farms that allow the rate are considered. A changed rate a cell cannot carry is the PATCH's 409 `no_room`; create queues the terminal for placement. The tenant's plan decides the farm: enterprise and system tenants' terminals go to their own farms, standard tenants' to the shared farms. A named farm outside the plan is 409 `farm_not_in_plan`; with no farm named a standard tenant is given a shared farm. A tenant already at its terminal quota is 409 `quota_exceeded` with `details {quota, in_use}`. While a version of the Terms of Service or the MetaTrader 5 licence that the organisation must accept is past its grace period unaccepted, a new terminal is 409 `terms_not_accepted` (`details.documents`); the terminals it has keep running. While a plan change awaits acceptance of the new plan's Service Agreement, or a Service Agreement version is past its grace period unaccepted, a new terminal is 409 `service_agreement_not_accepted` (`details.plan_change`, `details.documents`, `details.accept_url`).
      */
     post: operations["createTerminal"];
     delete?: never;
@@ -520,8 +544,9 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Retire many of your terminals at once - accepted at once, carried out at the pace of their cells
-     * @description One request for many terminals. Each terminal the filter names is judged by the same rules as `POST /terminals/{id}/retire`; a refused one is listed in `refused` with its rule's code and the rest are taken. Each taken terminal is one operation in its cell's line, and each cell carries them at its own pace, so the terminals already running on it are not slowed. The answer is 202 with the action and its expected finish; follow it at `GET /bulk-actions/{id}`, or each operation as usual. The items never expire. The same Idempotency-Key returns the same action. 422 `validation_error` when no filter is given.
+     * Not served, and will not be: retire one terminal at a time, or restart many with bulkRestartTerminals
+     * @deprecated
+     * @description MFX Hub does not serve a tenant's bulk retire and will not; a call answers 404. Retire each terminal with `DELETE /terminals/{id}`, or restart many with `POST /terminals:restart`. The path stays only because v1 changes are additive. What follows is the shape it was drafted with. One request for many terminals. Each terminal the filter names is judged by the same rules as `POST /terminals/{id}/retire`; a refused one is listed in `refused` with its rule's code and the rest are taken. Each taken terminal is one operation in its cell's line, and each cell carries them at its own pace, so the terminals already running on it are not slowed. The answer is 202 with the action and its expected finish; follow it at `GET /bulk-actions/{id}`, or each operation as usual. The items never expire. The same Idempotency-Key returns the same action. 422 `validation_error` when no filter is given.
      */
     post: operations["bulkRetireTerminals"];
     delete?: never;
@@ -745,7 +770,7 @@ export interface paths {
     get?: never;
     /**
      * Attach an approved version of your EA to a terminal - governed, followed as an operation; a trial with trading off comes first
-     * @description Refused before the operation's rules: 409 `ea_not_approved` with the version's state; 409 `not_customer_code_farm`; 409 `build_mismatch` when the version was built for another MetaTrader build than the farm runs: after an operator moves the farm to a newer MetaTrader, the platform builds each approved version for it, and `details.build` says where that build stands - `queued`, `running` (attach again once it is done), or `failed` with `failure` in plain words (the version is not attachable on that build; the same bundle uploaded again tries once more); 409 `ea_attached` when the terminal already carries one (detach it first); 404 for another tenant's version, or a symbol the terminal's server does not list. Then the seven rules of a governed operation, as on restartTerminal. The operation succeeds when the terminal produces again with the build loaded and trading by experts off: the trial has started. A green trial goes live by itself on a demo account; on a real-money account it waits for confirmExpertAdvisor.
+     * @description Refused before the operation's rules: 409 `ea_not_approved` with the version's state; 409 `not_customer_code_farm`; 409 `build_mismatch` when the version was built for another MetaTrader build than the farm runs: after an operator moves the farm to a newer MetaTrader, the platform builds each approved version for it, and `details.build` says where that build stands - `queued`, `running` (attach again once it is done), or `failed` with `failure` in plain words (the version is not attachable on that build; the same bundle uploaded again tries once more); 409 `ea_attached` when the terminal already carries one (detach it first); 404 for another tenant's version, or a symbol the terminal's server does not list; 409 `terms_not_accepted` while a version of the Terms of Service or the MetaTrader 5 licence that the organisation must accept is past its grace period unaccepted (a detach, and an expert advisor already attached, are never held); 409 `service_agreement_not_accepted` likewise while a Service Agreement is due. Then the seven rules of a governed operation, as on restartTerminal. The operation succeeds when the terminal produces again with the build loaded and trading by experts off: the trial has started. A green trial goes live by itself on a demo account; on a real-money account it waits for confirmExpertAdvisor.
      */
     put: operations["attachExpertAdvisor"];
     post?: never;
@@ -1270,6 +1295,8 @@ export interface paths {
       query?: {
         server_id?: string;
         account_type?: string;
+        /** @description One of the tenant's own terminals to make the read. It must be ACTIVE. The symbol is read on that terminal's server, so a name that is on two servers of the broker needs no `server_id`; when `server_id` is also given it must be that terminal's server. The answer is then that terminal's own bid and ask, read through it and never a tick another terminal reported, and `source_terminal_id` is this id. Without it the platform chooses the terminal, as before. */
+        terminal_id?: string;
       };
       header?: never;
       path: {
@@ -1280,7 +1307,7 @@ export interface paths {
     };
     /**
      * The last price with its age — a snapshot from the tenant's own terminal, never a stream
-     * @description A symbol the terminal already watches answers from its latest tick. Any other symbol is read on demand through the terminal's command path (read-only, allowed on every usage) with a 5 s bound; no tick in time is 503 (`upstream_error`, details.reason `terminal_timeout`). A price is never returned without `age_s`. Continuous prices are `POST /md/subscriptions` on a `quote_streaming` farm.
+     * @description A symbol the terminal already watches answers from its latest tick. Any other symbol is read on demand through the terminal's command path (read-only, allowed on every usage) with a 5 s bound; no tick in time is 503 (`upstream_error`, details.reason `terminal_timeout`). A price is never returned without `age_s`. Continuous prices are `POST /md/subscriptions` on a `quote_streaming` farm. With `terminal_id` the read is made by that terminal and by no other, so two of a tenant's accounts on one server can be compared (two account groups can be quoted different spreads under one symbol name); every answer a terminal read names that terminal in `source_terminal_id`. A read by a named terminal is one command on that terminal and one request against the key's request budget (`X-MFX-Budget-Remaining`), as every call is; while one such read of a symbol is in flight on a terminal, another ask for the same symbol on it is given that read's answer and sends no second command.
      */
     get: operations["getSymbolQuote"];
     put?: never;
@@ -1326,6 +1353,31 @@ export interface paths {
     post?: never;
     /** Stop a subscription, by server or by a cTrader account */
     delete: operations["deleteSubscription"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/md/servers/{id}/subscription": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The broker server's id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** The server's subscription; 404 when there is none */
+    get: operations["getServerSubscription"];
+    /**
+     * Subscribe to every symbol your terminals on a server read, each symbol's newest quote once an interval, on one channel
+     * @description One subscription per server. It is created if there is none, and its interval is changed if there is one; the same body twice changes nothing. A change of interval reaches the channel within 10 seconds, with no reconnect. After a `DELETE`, a `PUT` makes a new subscription with a new `id`. A server of a cTrader venue is refused 409 `state_error` (`details.reason` `not_on_this_venue`): subscribe by account there. While the channel is not offered in an environment the answer is 409 `state_error` (`details.reason` `server_channel_disabled`).
+     */
+    put: operations["putServerSubscription"];
+    post?: never;
+    /** Stop the server's subscription; its channel is then not_subscribed */
+    delete: operations["deleteServerSubscription"];
     options?: never;
     head?: never;
     patch?: never;
@@ -1471,6 +1523,146 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/price-list": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The public price list, and the next one once it is released; no key needed
+     * @description The list version marked public: the plans, every item with its public name, unit and monthly price, which plans have it, the Standard account limit and when to talk to sales. `next` is the following version once it is released, with the date it starts. Cached for five minutes; never anything of a tenant's own. The website's pricing page and calculator read this. It needs no key, and it also accepts a signed request: the signature headers and the key are ignored here, so an SDK that signs every request calls it as it is and is never refused for carrying a key.
+     */
+    get: operations["getPriceList"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/billing": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The organisation's billing, every billing profile with its standing
+     * @description One object, not paged. Standard has one implicit profile; Enterprise may have several. The top-level `standing` is the most urgent of the profiles'.
+     */
+    get: operations["getBilling"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/billing/profiles/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /** One billing profile, with its balance, today's daily charge, month to date and standing */
+    get: operations["getBillingProfile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/billing/profiles/{id}/forecast": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * This month for one billing profile, to date by product, and the forecast to month end
+     * @description Per day: each line's account-days to date at this month's daily rate (the monthly price divided by the days in the month), and the forecast at today's accounts and add-ons for the days left. One object, not paged.
+     */
+    get: operations["getBillingForecast"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/billing/prices": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The prices your organisation pays, in the shape of the price list
+     * @description Your Enterprise agreement's prices when one is in force (`scope: tenant`, with `agreement` and each line's dates and value), otherwise the list in force. One object, not paged.
+     */
+    get: operations["getBillingPrices"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/billing/invoices": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The organisation's invoices, newest first, across its billing profiles
+     * @description Paged by cursor. Filter to one profile with `billing_profile_id`.
+     */
+    get: operations["listBillingInvoices"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/billing/invoices/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /** One invoice with its summary by product, tax, what is matched and how to pay */
+    get: operations["getBillingInvoice"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/expert-advisors": {
     parameters: {
       query?: never;
@@ -1537,6 +1729,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/expert-advisors/{id}/parameter-definitions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * What each parameter of a version is - its type, default, bounds and choices
+     * @description The version's own definitions; with none, its previous version's (`inherited_from`); with none there either, a draft read from the `input` lines of its source (`proposed_from_source`), for you to confirm. A compiled-only upload has no draft.
+     */
+    get: operations["getExpertAdvisorParameterDefinitions"];
+    /**
+     * Replace a version's parameter definitions - checked whole; a set is then checked against them
+     * @description The list replaces the version's definitions whole. Keys are identifiers, unique, and never named like a credential; a `choice` lists its words; bounds only on `number` and `integer`, in order; a default fits its own definition. 400 `validation_error` names the first thing wrong (`details.field`). A set's value outside its definition is then refused with 422 `unprocessable`, `details.reason` `parameter_out_of_range`.
+     */
+    put: operations["putExpertAdvisorParameterDefinitions"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/tenant/contacts": {
     parameters: {
       query?: never;
@@ -1549,6 +1767,46 @@ export interface paths {
      * @description Read only. The representative is emailed each verdict and confirms live trading on a real-money account; the technical contacts are emailed what to change. Contacts are set by the platform's operators.
      */
     get: operations["getTenantContacts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/tenant/service-agreement": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * What your organisation must accept before it can add terminals, expert advisors or keys
+     * @description Any key may read it, whatever its scopes. `due` is true while a plan change awaits acceptance of the new plan's Service Agreement, or a version of a Service Agreement, the Terms of Service or the MetaTrader 5 licence asks to be accepted. While a plan change waits, the plan in force stays as it is. `held` is true while additions are refused 409 `service_agreement_not_accepted` or `terms_not_accepted`; reads, orders, positions and anything running are never refused. An owner or admin accepts at `accept_url`. Every answer carries the `MFX-Service-Agreement` header while something is due.
+     */
+    get: operations["getTenantServiceAgreement"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/custody": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Data custody - what of your trading data is held where, who can read it, the stated limit and your key's state (Enterprise)
+     * @description Read only. Enterprise only, and always on: a key whose plan is not Enterprise is 403 `feature_not_entitled` with `details.feature = data_custody`. Nobody at MFX Hub can read your broker password, login, account name, server, orders, fills, positions or balances; instrument names are held in clear because quotes are routed by symbol. The stated limit says where the promise ends.
+     */
+    get: operations["getCustody"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1689,9 +1947,31 @@ export interface paths {
     put?: never;
     /**
      * Put a version in force on accounts; each account's outcome is answered separately
-     * @description An account holds one active policy. Activating a version that relaxes the one in force on an account needs `risk:override` and a `reason`, for that account. Takes effect on the next account read. `risk.policy_activated` is sent for each account that changed.
+     * @description An account holds one active policy. Activating a version that relaxes the one in force on an account needs `risk:override` and a `reason`, for that account. Takes effect on the next account read. `risk.policy_activated` is sent for each account that changed. An account that holds a drawdown peak keeps it when another version or policy is activated on it, so a version whose trailing drawdown measures its peak on the other basis (`equity` or `balance`) is refused for that account with `drawdown_peak_held`: deactivate the account, then activate, to start a fresh peak. With no peak held, it goes through.
      */
     post: operations["activateRiskPolicy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/policies/{id}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Archive a policy that is in force on no account; it no longer counts toward the policies quota
+     * @description Refused 409 `state_error` while any account holds the policy, active or paused; `details.accounts` lists those accounts. Deactivate them first. An archived policy stays readable with its versions, and Activity keeps everything it did. It cannot be activated or given a new version (409 `state_error`). Archiving an archived policy answers it as it is.
+     */
+    post: operations["archiveRiskPolicy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2018,6 +2298,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/risk/challenges/{id}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Archive a challenge with no account in progress; it no longer counts toward the challenges_max quota
+     * @description Refused 409 `state_error` while any account is in progress in the challenge; `details.accounts` lists those accounts. An account that passed, failed or ended does not hold it. An archived challenge stays readable with its versions, its accounts' results and their periods, and Activity keeps everything it did. It takes no new version and enrols no account (409 `state_error`). A failed account's block on entries is unchanged by the archive; the account's clear lifts it. Archiving an archived challenge answers it as it is.
+     */
+    post: operations["archiveRiskChallenge"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/risk/challenges/{id}/accounts": {
     parameters: {
       query?: never;
@@ -2067,6 +2369,26 @@ export interface paths {
     };
     /** Every warning, breach, action and its outcome, policy and plan change, unresolved first, with evidence */
     get: operations["listRiskActivity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/risk/stops": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Per account over a window, the entries a rule refused and the positions a rule closed, the closes split by magic number
+     * @description For a report such as an expert advisor's "stopped by a risk rule". `refused` counts the entries a rule in force refused (422 `risk_refused`) whose Activity row falls in the window; an entry refused because the check could not run (`risk_check_unavailable`) is not counted, since no rule refused it. `closed` counts the positions a rule's or a challenge's `close_positions` action closed, in whole or in part, by the time the action began; an operator's close is not counted. Each close names the magic number its position carried when the action listed it, so `closed_by_magic` can be read per expert advisor; a close listed before magic numbers were recorded counts in `closed_unattributed`. Only an order sent through MFX Hub can be refused, and such an order has no expert advisor, so refusals are counted per account only. An account with nothing in the window is left out.
+     */
+    get: operations["getRiskStops"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2182,7 +2504,7 @@ export interface paths {
     put?: never;
     /**
      * Retire a leader; every follow of it ends, and its copied positions are closed only if you ask
-     * @description Every follower of the leader that has not unfollowed becomes `unfollowed`, each with `copy.state_changed` (`why: leader_retired`). With `close_copied`, each follower's copied volume of this leader is closed, from the copied-position ledger, never the account's own positions; without it the copied positions stay open and are the account's own from then on. Retired is final: the account may lead again as a new leader. A leader already retired is answered as it is.
+     * @description Every follower of the leader that has not unfollowed becomes `unfollowed`, each with `copy.state_changed` (`why: leader_retired`). With `close_copied`, each follower's copied volume of this leader is closed, from the copied-position ledger, never the account's own positions; without it the copied positions stay open and are the account's own from then on. Retired is final: the account may lead again as a new leader. A leader already retired is answered as it is. The retire is final when the call returns; each follower's close is one requested close (`cause: leader_retired`), all of them under one `batch_id`, listed by `GET /copy/closes?leader_id=`, and final when it is `done` or `incomplete`, with one `copy.closed` each.
      */
     post: operations["retireCopyLeader"];
     delete?: never;
@@ -2227,7 +2549,7 @@ export interface paths {
     };
     /**
      * Your followers, newest first, with a count of each state
-     * @description `state`, `leader_id`, `account_id` and `group_id` narrow the list in the query, before the page is cut. The stats row counts the followers the filters match, on every page.
+     * @description `state`, `leader_id`, `account_id`, `group_id` and `out_of_step` narrow the list in the query, before the page is cut. The stats row counts the followers the filters match, on every page. Newest first unless `sort` is `oldest`; a cursor continues the sort it was cut for, and one cut for the other sort is 400 `validation_error`. There is no sort by today's copies, latency or drift: `out_of_step` finds the followers that are wrong.
      */
     get: operations["listCopyFollowers"];
     put?: never;
@@ -2368,9 +2690,51 @@ export interface paths {
     put?: never;
     /**
      * End the follow; close what it copied only if you ask
-     * @description The follower becomes `unfollowed`, which is final: the account may follow the leader again as a new follower. With `close_copied`, the volume copied from this leader is closed, from the copied-position ledger, never the account's own positions; on a netting account the close is of the copied volume only. Without it the copied positions stay open and are the account's own from then on. An unfollowed follower is answered as it is.
+     * @description The follower becomes `unfollowed`, which is final: the account may follow the leader again as a new follower. With `close_copied`, the volume copied from this leader is closed, from the copied-position ledger, never the account's own positions; on a netting account the close is of the copied volume only. Without it the copied positions stay open and are the account's own from then on. An unfollowed follower is answered as it is. The follow is final when the call returns (`unfollowed`); the close is a requested close, the answer's `close`, carried to the account's copy host in its signed mandate and final when it is `done` (every copied position closed or found closed) or `incomplete` (any not closed), with one `copy.closed`. `GET /copy/closes/{id}` has each position and each attempt.
      */
     post: operations["unfollowCopyLeader"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/closes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Your requested closes of copied positions, newest first, with a count of each state
+     * @description Each close an unfollow or a retire with `close_copied`, or a group's close, asked. Every filter narrows the rows in the query, and the stats row is over the same rows: the whole filtered window, on every page. The window is `from` to `to` on when the close was asked, at most 31 days (422 `window_too_wide`); without `from` it is the last 24 hours. A retire's or a group close's closes share one `batch_id`.
+     */
+    get: operations["listCopyCloses"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/closes/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    /**
+     * One requested close, each copied position it covers and each attempt
+     * @description Another tenant's close is 404, as a missing one is.
+     */
+    get: operations["getCopyClose"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -2433,6 +2797,46 @@ export interface paths {
      * @description Newest first unless `sort` says otherwise. Every filter narrows the rows in the query, before the page is cut, and the stats row is over the same rows: the whole filtered window, on every page. The window is `from` to `to`, at most 31 days (422 `window_too_wide`); without `from` it is the last 24 hours. Rows older than the plan's log retention are gone and are not returned. Times are milliseconds; MFX Hub's part of a copy (`mfx_ms`) is reported apart from the venue's (`broker_ms`).
      */
     get: operations["listCopyLog"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/signals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Your leaders' signals over a window, newest first, each with what became of its copies
+     * @description Leader fills and external signals as MFX Hub recorded them, never a signature, a key id or the source's body: the console's own row, and `outcomes`, how many of the signal's own copies were filled, refused and skipped (a stop-out's close names the signal it closes but is not its copy). Every filter narrows the rows in the query, before the page is cut, and the stats row counts every signal the window and the filters match, by kind, on every page. The window is `from` to `to`, each inclusive, at most 31 days (422 `window_too_wide`); without `from` it is the last 24 hours. As on the copy log, nothing older than the plan's log retention is listed.
+     */
+    get: operations["listCopySignals"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/stopouts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Every stop-out of your followers over a window, newest first, with a count of each state
+     * @description Each stop-out as `listCopyStopouts` shows it, across every follower. Every filter narrows the rows in the query, before the page is cut, and the stats row counts every stop-out the window and the filters match, by state, on every page. The window is `from` to `to` on the stop-out's `created_at`, each inclusive, at most 31 days (422 `window_too_wide`); without `from` it is the last 24 hours, and a day is its two ends. `group_id` is the group's followers now. Another tenant's follower or group matches none.
+     */
+    get: operations["listTenantCopyStopouts"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2551,6 +2955,50 @@ export interface paths {
      * @description While the group is paused its followers' entries are logged `refused` with reason `paused`; closes, partial closes and stop changes of what they copied are still copied. Each follower keeps its own state, so resuming the group restores each one as it was. A group already paused is answered as it is.
      */
     post: operations["pauseCopyGroup"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/groups/{id}/close": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Close the copied positions of every live member of the group (Enterprise); the follows are kept
+     * @description One requested close a member that has not unfollowed (`cause: group_close`), all under one `batch_id`, covering the copied positions opened by leader deals signalled at or before this request (`cutoff_at` is its moment); a position copied after it is not covered. Only the volume copied is closed, never the account's own. `pause` is required: `true` pauses the group in the same act, so each member's next mandate copies closes only and carries its close; `false` leaves the group's state as it is, and later leader deals are copied again. Progress is `GET /copy/closes?batch_id=`, and each close sends one `copy.closed`. A copy of a covered deal can still fill until that deal's signal expires, so each close stays `pending` until the cutoff plus the longest signal lifetime of the group's leaders plus two minutes, closing such late copies too, even when every position it listed is closed. A member that already had a close pending has it superseded, the wider cover kept. A repeated Idempotency-Key answers the same batch.
+     */
+    post: operations["closeCopyGroup"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/copy/groups/{id}/rollover": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Set the group's template on its live members, or see what it would change (Enterprise)
+     * @description A template is what a follower created into the group starts from; this sets it on the followers already in it. Each member that has not unfollowed, in id order after `after`, at most `limit` (1 to 500), has each field named in `fields` (by default every field the template sets) set to the template's, checked as an update of that follower is: `scaling` is replaced, `bounds`, `options` and `risk_limits` are laid over what it holds. Each member is answered `changed` with each field's `from` and `to`, `unchanged`, or `refused` with the reason an update would be refused (`not_on_this_venue` when its venue cannot honour an option, `needs_leader_account` for a ratio mode under an external leader); the others still change. `next_after` continues with the next page, null after the last. A dry run changes nothing and needs no Idempotency-Key. An applied rollover needs one (400 `validation_error` without it): each changed member's `mandate_version` rises once and its new mandate reaches its copy host as any update's does, the page is audited with its results, and a repeated Idempotency-Key answers the same results. A field named that the template does not set is 422 `validation_error` with `details.unset`.
+     */
+    post: operations["rolloverCopyGroup"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2843,6 +3291,11 @@ export interface components {
     BulkActionRefusal: {
       /** Format: uuid */
       terminal_id: string;
+      /**
+       * Format: uuid
+       * @description The account the terminal runs; null for a terminal no account owns
+       */
+      account_id?: string | null;
       /** @description The governed-operation rule that refused it, as the single route answers it (e.g. positions_open, operation_in_progress, superseded_by_waiting, farm_frozen) */
       code: string;
     };
@@ -3278,7 +3731,7 @@ export interface components {
       /** Format: date-time */
       created_at: string;
     };
-    /** @description Start connecting a trader's cTrader accounts. Send the trader to `consent_url`: they sign in at cTrader, choose the accounts to share, and come back to `return_url`. */
+    /** @description Start connecting a trader's cTrader accounts. Send the trader to `consent_url`: they sign in at cTrader, choose the accounts to share, and come back to `return_url`, or to MFX Hub's own result page when you send none. */
     CtraderGrantCreate: {
       /**
        * @description live or demo accounts; one grant covers one of them
@@ -3292,11 +3745,20 @@ export interface components {
       scope: "accounts" | "trading";
       /**
        * Format: uri
-       * @description Where the trader is sent after consent, https only. MFX Hub adds `grant_id`, `result` (`granted`, `denied` or `failed`) and your `tenant_state` as query parameters.
+       * @description Where the trader is sent after consent, https only. MFX Hub adds `grant_id`, `result` (`granted`, `denied` or `failed`) and your `tenant_state` as query parameters. Optional: without it the trader ends on MFX Hub's own page, which tells them the result in plain words and sends them nowhere else. Nothing then comes back to you, so follow the grant by reading it (`GET /v1/accounts/ctrader/grants/{grant_id}`): `ACTIVE` with its accounts once they approve, `EXPIRED` if they refuse or the link lapses. Once you have registered return origins (`PUT /v1/accounts/ctrader/return-origins`), its origin must be one of them, else 400 `validation_error` with `details.reason` `return_url_unregistered`.
        */
-      return_url: string;
-      /** @description Your own value, returned unchanged on return_url; never read by MFX Hub */
+      return_url?: string;
+      /** @description Your own value, returned unchanged on return_url; never read by MFX Hub, and not shown on MFX Hub's own result page */
       tenant_state?: string | null;
+    };
+    CtraderReturnOrigins: {
+      /** @description Each host lower-cased, :443 dropped, no duplicates, sorted */
+      origins: string[];
+      /** @description true when a grant's return_url is checked against origins */
+      enforced: boolean;
+    };
+    CtraderReturnOriginsSet: {
+      origins: string[];
     };
     CtraderGrantStarted: {
       /** Format: uuid */
@@ -4326,6 +4788,8 @@ export interface components {
       close_by_emulated?: boolean;
       /** @description True when a market order filled but its stop loss or take profit could not be set on the new position (cTrader sets them after the fill): the position is open without them. False otherwise */
       protection_not_set?: boolean;
+      /** @description When `reason` is `instrument_disabled` on MT5: the symbols in the tenant's catalogue for the same server and account type as the terminal that have the refused symbol's base name (its name up to the first `.`, ignoring case) and are not disabled, sorted, never including the refused symbol. A variant whose suffix does not start with `.` (EURUSDm, EURUSD_i) is not found: this is a base-name match, not a full variant search. For example, an order on EURUSD refused this way can name EURUSD.sd. Worked out when the result is read, so it names what trades at that moment. The platform never picks one, rewrites the order or sends it again: send a new order on the one you choose, under a new Idempotency-Key. Null for every other reason, on cTrader, and when no such symbol trades. Not on the `command.failed` stream message: read the command */
+      tradable_variants?: string[] | null;
     };
     Command: {
       /** Format: uuid */
@@ -4631,11 +5095,14 @@ export interface components {
        */
       complete_to?: string | null;
     };
-    /** @description md.candle_closed on candles:{server_id}:{symbol}:{tf}: a closed bar, once, read by one of your own terminals. Never replayed; prev_ts tells you whether you missed one */
+    /** @description md.candle_closed on candles:{server_id}:{symbol}:{tf}: a closed bar, once, read by one of your own terminals; or on candles:{account_id}:{symbol}:{tf} for a cTrader account's subscription, the bar Spotware closed for that broker and environment. Never replayed; prev_ts tells you whether you missed one */
     MdCandleClosed: {
       /** @example 1 */
       schema_version: string;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description The channel's first key: the server, or the account on a cTrader account's channel
+       */
       server_id: string;
       /** @description The broker's own name */
       symbol: string;
@@ -4676,6 +5143,66 @@ export interface components {
       items: components["schemas"]["Tick"][];
       /** @description True when the window holds ticks beyond these. Ask again with `from` set to the last tick's `ts` and drop the ticks of that millisecond you already hold */
       more: boolean;
+    };
+    /** @description `data` of a tick on `md:{server_id}:{symbol}` (a msg with no `type`): one quote as one of the tenant's own terminals read it. Every terminal of the tenant on that server that lists the symbol feeds the channel, and a tick is sent once, when its broker time is newer than the newest already sent; `source_terminal_id` says which terminal brought it. Ticks published together are sent with the same `seq`; they are usually one terminal's one read, and can be several terminals' when the stream was held to its rate, so read `source_terminal_id` and `source_sent_at` on each tick. The four times are in order: the tick's own (`broker_ts`, on the broker's clock), `source_sent_at`, `fanned_at`, `sent_at`; the last three are on the platform's clock, so `sent_at` minus `source_sent_at` is the time the tick spent inside the platform after the terminal's host sent it, with no clock of the client's in it. Ticks are never replayed. */
+    MdTickMessage: {
+      /** @description decimal as a string */
+      bid: string;
+      /** @description decimal as a string */
+      ask: string;
+      /** @description The last deal price, decimal as a string; 0.0 where the broker sends none */
+      last?: string;
+      /** @description The tick's volume as the terminal reported it */
+      volume?: number;
+      /** @description The tick's time on the broker's clock, to the millisecond, no offset, e.g. 2026-11-20T08:16:53.187 */
+      broker_ts: string;
+      /** @description When the platform published the tick to the tenant's stream: seconds since 1970 UTC with milliseconds, as text, e.g. 1795155413.660 */
+      fanned_at?: string;
+      /**
+       * Format: uuid
+       * @description The tenant's terminal that read this tick. For a terminal with MFX Hub HA it is the tenant's terminal, never a pair member. Absent on a cTrader account's channel (`md:{account_id}:{symbol}`), where no terminal of the tenant's reads the price, and wherever the platform does not know it; never sent empty
+       */
+      source_terminal_id?: string;
+      /** @description When the host of the terminal that read the tick sent it to the platform, in the form of `fanned_at` */
+      source_sent_at?: string;
+      /** @description When the gateway put the message on this connection, in the form of `fanned_at` */
+      sent_at?: string;
+    };
+    /** @description `data` of an `md.quotes` message on `md:{server_id}`: the quotes of the server's symbols that changed since the last message, each symbol at most once, with its newest quote. A symbol that did not tick is not in it, and the ticks between two messages are not sent on this channel: a tenant that needs every tick subscribes to the symbol's own channel. When more than 500 symbols changed, several messages follow one another, each complete in itself. A message with `snapshot` true answers `subscribe` or `resume`: it carries the newest quote the platform received for each symbol in the last 24 hours, which may be old (read its `broker_ts`), and has no `seq`. A client keeps, for each symbol, the quote with the newer `broker_ts`. Nothing is sent while nothing changes. `seq` increases from one message to the next and is not consecutive, so it does not show a lost message; a symbol is current again at its next tick, or at once by subscribing again. A client that reads slowly is not sent a backlog: the quotes waiting for it are kept one a symbol, the newest, and sent when it reads. When more than 500 of them wait they are sent as several messages, and only the last of those carries `seq`. `md_msgs_per_s` counts the channel's entries, each of up to 500 quotes, not its quotes. */
+    MdQuotesMessage: {
+      /** @description The payload's version; 1 */
+      schema_version: string;
+      /** @description The interval this message was built to: the subscription's `interval_ms` when it was sent */
+      interval_ms: number;
+      /** @description True on the messages that answer `subscribe` or `resume`; false on a change */
+      snapshot: boolean;
+      quotes: components["schemas"]["MdServerQuote"][];
+      /** @description When the platform wrote this message to the tenant's stream, or read the snapshot: seconds since 1970 UTC with milliseconds, as text. A message that gathers several waiting flushes for a slow reader says the newest of them here, as it does in `interval_ms` and `seq`; each quote's own age is in its `source_sent_at` and `broker_ts` */
+      fanned_at: string;
+      /** @description When the gateway put the message on this connection, in the form of `fanned_at` */
+      sent_at?: string;
+    };
+    /** @description One symbol's newest quote in an `md.quotes` message: the symbol, and the fields of that tick as its own channel sends them (`MdTickMessage`). `broker_ts` is this symbol's own time on the broker's clock. The message's `sent_at` minus `source_sent_at` is the time this quote spent inside the platform, the wait for the interval included. */
+    MdServerQuote: {
+      /** @description In the broker's own name, as the terminal lists it */
+      symbol: string;
+      /** @description decimal as a string */
+      bid: string;
+      /** @description decimal as a string */
+      ask: string;
+      /** @description The last deal price, decimal as a string; 0.0 where the broker sends none */
+      last?: string;
+      /** @description The tick's volume as the terminal reported it */
+      volume?: number;
+      /** @description The tick's time on the broker's clock, to the millisecond, no offset, e.g. 2026-11-20T08:16:53.187 */
+      broker_ts: string;
+      /**
+       * Format: uuid
+       * @description The tenant's terminal that read this tick. For a terminal with MFX Hub HA it is the tenant's terminal, never a pair member
+       */
+      source_terminal_id?: string;
+      /** @description When the host of the terminal that read the tick sent it to the platform: seconds since 1970 UTC with milliseconds, as text */
+      source_sent_at?: string;
     };
     /** @description `data` of an `md.book` message on `book:{server_id}:{symbol}`: the symbol's whole order book as one of the tenant's terminals read it, best price first on each side. Replace your book with every message. The terminal reads at its refresh rate and sends a book only when it differs from the last it sent, so two changes inside one read are one book. `seq` increases as on `md:`; a gap is a book that was superseded before it reached you. Not a reconstruction: MFX Hub builds no book from ticks or from several terminals. */
     BookMessage: {
@@ -5161,6 +5688,36 @@ export interface components {
       /** Format: date-time */
       created_at: string;
     };
+    MdServerSubscriptionPut: {
+      /**
+       * @description How often the channel sends: each symbol's newest quote at most once per this many milliseconds
+       * @default 1000
+       * @enum {integer}
+       */
+      interval_ms: 200 | 250 | 500 | 1000 | 2000 | 3000 | 4000 | 5000;
+    };
+    /** @description The tenant's subscription to a whole server's quotes, one per server. It covers every symbol the tenant's terminals on that server read, now and later, and names none; it adds no symbol to any terminal. Its channel is `md:{server_id}`. A stopped subscription is gone: `GET` answers 404 and a later `PUT` makes a new one. */
+    MdServerSubscription: {
+      /** Format: uuid */
+      id: string;
+      broker: components["schemas"]["Ref"];
+      server: components["schemas"]["Ref"];
+      /** @enum {integer} */
+      interval_ms: 200 | 250 | 500 | 1000 | 2000 | 3000 | 4000 | 5000;
+      /**
+       * @description `pending` until the platform has written the first quote for its channel, then `streaming`
+       * @enum {string}
+       */
+      state: "pending" | "streaming";
+      /** @description How many symbols the platform holds a quote for on this server now; null when it cannot tell */
+      symbols?: number | null;
+      /** Format: date-time */
+      first_quote_at?: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
     /** @description An address MFX Hub calls for the tenant's events. `https` only, port 443 or 8443, a host name and not an address, no credentials in the URL; a name that resolves to a private, loopback, link-local, metadata or MFX Hub address is refused with 422. The number of endpoints a tenant may have is limited (409 `quota_exceeded`). Each delivery's body is the event as the `events` channel carries its `data`: `type`, the fields of the schema `x-event-payloads` on `/stream` names for that type, and `id`, the event's cursor (`MFX-Event-Id`). */
     WebhookEndpointCreate: {
       /** Format: uri */
@@ -5506,6 +6063,8 @@ export interface components {
     AccountMdSubscriptionCreate: {
       /** @description As `GET /accounts/{id}/symbols` lists it */
       symbol: string;
+      /** @description Closed bars to stream on candles:{account_id}:{symbol}:{tf} and keep in the store; none means spots only. Asking again for the live subscription sets its timeframes to the ones asked, as POST /md/subscriptions does. Counted against the same series limit (409 bar_series_limit) */
+      timeframes?: ("M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1" | "W1" | "MN1")[];
     };
     /** @description A cTrader account's market-data subscription */
     AccountMdSubscription: {
@@ -5517,6 +6076,8 @@ export interface components {
       /** Format: uuid */
       account_id: string;
       symbol: string;
+      /** @description The closed-bar series it streams; empty for spots only */
+      timeframes?: string[];
       /**
        * @description `pending` until the first spot after it; `streaming` once one has arrived
        * @enum {string}
@@ -5740,6 +6301,11 @@ export interface components {
       broker_time: string;
       age_s: number;
       state: components["schemas"]["SymbolState"];
+      /**
+       * Format: uuid
+       * @description The tenant's terminal whose tick this is: the one named in `terminal_id`, else the one the platform chose. For a terminal with MFX Hub HA it is the tenant's terminal, never a pair member. Absent on an answer served from the stored tick, which does not record which terminal reported it, and on an answer from a platform older than this field.
+       */
+      source_terminal_id?: string;
     };
     /**
      * @description A service a window may suspend.
@@ -6035,6 +6601,46 @@ export interface components {
       /** @description True when applied_version equals version. False past the grace window (60 s unless an operator changed it) raises the terminal condition EaParamsNotApplied */
       converged: boolean;
     };
+    /** @description One parameter of an advisor version, as its form shows it */
+    EaParameterDefinition: {
+      key: string;
+      label: string;
+      /** @enum {string} */
+      type: "number" | "integer" | "boolean" | "choice" | "text";
+      /** @description Fits the definition; null for none */
+      default: unknown;
+      min: number | null;
+      max: number | null;
+      /** @description The words a choice offers; null for every other type */
+      choices: string[] | null;
+      help: string | null;
+      position: number;
+    };
+    EaParameterDefinitions: {
+      definitions: components["schemas"]["EaParameterDefinition"][];
+      /** @description True when the list is a draft read from the source, not kept yet */
+      proposed_from_source: boolean;
+      /**
+       * Format: uuid
+       * @description The previous version whose definitions these are, until this version keeps its own
+       */
+      inherited_from: string | null;
+    };
+    EaParameterDefinitionsPut: {
+      definitions: {
+        key: string;
+        /** @description The key when absent */
+        label?: string;
+        /** @enum {string} */
+        type: "number" | "integer" | "boolean" | "choice" | "text";
+        /** @description Fits the definition */
+        default?: unknown;
+        min?: number | null;
+        max?: number | null;
+        choices?: string[] | null;
+        help?: string | null;
+      }[];
+    };
     TenantExpertAdvisorPage: {
       /** @description Opaque (created_at, id) cursor for the following page; null on the last page */
       next_cursor: string | null;
@@ -6056,7 +6662,7 @@ export interface components {
       | "interface"
       | "contract_build"
       | "best_practice";
-    /** @description One finding of a report. `evidence` is quoted from the source at the lines named; a finding of the AI review whose evidence is not there is dropped before the report is made. A found secret is masked wherever it appears. */
+    /** @description One finding of a report. `evidence` is quoted from the source at the lines named; a finding of the review whose evidence is not there is dropped before the report is made. A found secret is masked wherever it appears. */
     EaFinding: {
       /** @description e.g. SEC-06 */
       rule_id: string;
@@ -6138,7 +6744,7 @@ export interface components {
         findings: number;
       }[];
       findings: components["schemas"]["EaFinding"][];
-      /** @description The AI review's paragraph for the tenant; null where it did not run */
+      /** @description The review's paragraph for the tenant; null where it did not run */
       summary: string | null;
       /** @description The newest judged trial of this version: its verdict, what it found and its figures. The version's own verdict, findings and categories stay those of its checks; a trial is judged on one terminal. Null until a trial has been judged, and absent from older answers */
       trial?: components["schemas"]["EaReportTrial"] | null;
@@ -6159,6 +6765,101 @@ export interface components {
       reason: string | null;
       /** @description The seven, as judged */
       figures: components["schemas"]["EaTrialFigure"][];
+    };
+    /** @description Which legal document. The list is open: today terms (Terms of Service), privacy (Privacy Statement), mt5_licence (the MetaTrader 5 licence) and one Service Agreement per plan, service_agreement_<plan> (service_agreement_standard, service_agreement_enterprise; a plan added later adds its own). A reader must treat a key it does not know as one more document, by its name, and must never fail on it. */
+    LegalDocumentKey: string;
+    /** @description A move from one plan to another, as the customer sees it */
+    PlanChangeSummary: {
+      /** Format: uuid */
+      id: string;
+      /** @description The plan now: standard or enterprise */
+      from: string;
+      /** @description The plan after acceptance: standard or enterprise (developer when it launches) */
+      to: string;
+      /** @enum {string} */
+      state: "awaiting_acceptance" | "active" | "lapsed" | "withdrawn";
+      /** Format: date-time */
+      requested_at: string;
+      /**
+       * Format: date-time
+       * @description When an awaiting change lapses if nobody accepts it; null once decided
+       */
+      until: string | null;
+      /** @description MFX Hub asked for the change (true) or the organisation did (false) */
+      requested_by_operator: boolean;
+    };
+    /** @description Data custody for an Enterprise organisation: what of its trading data is held where and who can read each kind, the limit of that promise stated plainly, and the state of the key that is the organisation's own. Always on for Enterprise; there is no switch. */
+    Custody: {
+      /** @description One row per kind of data, in this order: broker password; broker login, account name and server; orders, fills, positions, balances and account profile; instrument names */
+      data: components["schemas"]["CustodyDataRow"][];
+      stated_limit: components["schemas"]["CustodyStatedLimit"];
+      key: components["schemas"]["CustodyKey"];
+    };
+    /** @description One kind of trading data: where it is held and who can read it */
+    CustodyDataRow: {
+      /**
+       * @description broker_password: the broker password. account_identity: the broker login, the account name and the server. trading_records: orders, fills, positions, balances and the account profile. instrument_names: the names of the instruments.
+       * @enum {string}
+       */
+      data: "broker_password" | "account_identity" | "trading_records" | "instrument_names";
+      /** @description The kind of data in words, e.g. "Broker password" */
+      label: string;
+      /**
+       * @description vault_released_to_attested_machine: in a hardware-protected vault, released only to an attested confidential machine and wrapped to that machine's own trusted platform module. encrypted_under_your_key: stored encrypted under the organisation's key; trading records pass through the machine's own short-lived streams only. in_clear: not encrypted under the organisation's key.
+       * @enum {string}
+       */
+      held: "vault_released_to_attested_machine" | "encrypted_under_your_key" | "in_clear";
+      /** @description Where it is held, in words, as the page shows it */
+      held_text: string;
+      /** @description Who can read it. account_signed_in: the platform, in memory on the attested machine, while the account is signed in. you_through_the_api: the organisation, through the API. attested_machine: the attested confidential machine that runs the account. operators: MFX Hub's operators. */
+      readers: ("account_signed_in" | "you_through_the_api" | "attested_machine" | "operators")[];
+      /** @description Who can read it, in words, as the page shows it */
+      readers_text: string;
+      /** @description Why a kind of data is held in clear (instrument names: quotes are routed by symbol); null for the rest */
+      why: string | null;
+    };
+    /** @description The limit of the promise, stated on the page */
+    CustodyStatedLimit: {
+      /**
+       * @description The limit in words
+       * @example While an account is signed in, its broker password is held in memory and its orders are executed in clear, inside an attested confidential machine. That machine has no remote-command path and is attested before any key reaches it.
+       */
+      text: string;
+    };
+    /** @description The state of the organisation's own key, which wraps the keys its data is encrypted with */
+    CustodyKey: {
+      /** @description The key exists. It is created when the organisation becomes Enterprise */
+      created: boolean;
+      /** @description The key is protected by a hardware security module */
+      hsm_backed: boolean;
+      /** @description The policy that releases the key only to an attested confidential machine cannot be changed, by anyone */
+      release_policy_immutable: boolean;
+    };
+    /** @description What the calling key's organisation must still accept before it can add anything */
+    TenantServiceAgreement: {
+      /** @description Something is waiting to be accepted */
+      due: boolean;
+      /** @description Additions are refused 409 service_agreement_not_accepted (or terms_not_accepted) now */
+      held: boolean;
+      /** @description The plan in force */
+      plan: string;
+      plan_change: components["schemas"]["PlanChangeSummary"] | null;
+      documents: {
+        document: components["schemas"]["LegalDocumentKey"];
+        number: number;
+        plan: string | null;
+        /**
+         * Format: date-time
+         * @description Null for a plan change: it waits for acceptance instead
+         */
+        grace_ends_at: string | null;
+        held: boolean;
+      }[];
+      /**
+       * Format: uri
+       * @description Where an owner or admin accepts, in the customer portal
+       */
+      accept_url: string;
     };
     /** @description A limit as money in the account currency, or as a percentage of the rule's reference; exactly one */
     RiskAmount: {
@@ -6301,6 +7002,11 @@ export interface components {
       name: string;
       /** @enum {string} */
       state: "active" | "archived";
+      /**
+       * Format: date-time
+       * @description When it was archived; null while active
+       */
+      archived_at?: string | null;
       current_version: components["schemas"]["RiskPolicyVersion"];
       accounts: {
         /** Format: uuid */
@@ -6329,7 +7035,7 @@ export interface components {
         account_id: string;
         /** @enum {string} */
         outcome: "done" | "unchanged" | "refused";
-        /** @description Why it was refused, as an error code: risk_override_required, not_found, quota_exceeded */
+        /** @description Why it was refused, as an error code: risk_override_required, not_found, quota_exceeded, drawdown_peak_held (the version's trailing drawdown measures its peak on another basis than the peak this account holds), billing_payment_required (a payment is missing and this account holds no open position or pending order, so the add-on is not switched on; an account with open exposure is not refused for billing) */
         reason: string | null;
       }[];
     };
@@ -6534,6 +7240,13 @@ export interface components {
       limit: string | null;
       /** @description The refusal reason the pre-trade check would answer */
       reason: string | null;
+      /**
+       * Format: uuid
+       * @description The challenge whose rule this row checks; absent or null on a policy's row
+       */
+      challenge_id?: string | null;
+      /** @description On the row named inputs: the first input that is missing or too old, in the order of x-known-values. The list is not closed: a client must show a value it does not know as it is, and never fail on it. Absent or null on every other row */
+      input?: string | null;
     };
     RiskPreviewRequest: {
       /** Format: uuid */
@@ -6624,7 +7337,7 @@ export interface components {
         distance?: string | null;
       };
       /**
-       * @description broker: survives MFX Hub being down. mfx: needs the cell and the terminal
+       * @description broker: survives MFX Hub being down. mfx: needs the platform and the terminal
        * @enum {string}
        */
       held_by: "broker" | "mfx";
@@ -6654,7 +7367,7 @@ export interface components {
         distance?: string | null;
       };
       /**
-       * @description broker: survives MFX Hub being down. mfx: needs the cell and the terminal
+       * @description broker: survives MFX Hub being down. mfx: needs the platform and the terminal
        * @enum {string}
        */
       held_by: "broker" | "mfx";
@@ -6778,6 +7491,11 @@ export interface components {
       name: string;
       /** @enum {string} */
       state: "active" | "archived";
+      /**
+       * Format: date-time
+       * @description When it was archived; null while active
+       */
+      archived_at?: string | null;
       version: number;
       rules: components["schemas"]["RiskChallengeRules"];
       counts: {
@@ -6938,6 +7656,28 @@ export interface components {
       };
       /** @description Who changed something: a key id, or operator; null for the platform */
       by: string | null;
+    };
+    RiskStops: {
+      /** Format: date-time */
+      from: string;
+      /** Format: date-time */
+      to: string;
+      accounts: components["schemas"]["RiskStopsAccount"][];
+    };
+    RiskStopsAccount: {
+      /** Format: uuid */
+      account_id: string;
+      /** @description Entries a rule in force refused */
+      refused: number;
+      /** @description Positions a rule's or a challenge's close_positions action closed, in whole or in part */
+      closed: number;
+      /** @description closed per magic number, magic number order; 0 is a position no expert advisor opened */
+      closed_by_magic: {
+        magic: number;
+        closed: number;
+      }[];
+      /** @description Closes listed before magic numbers were recorded; closed is closed_by_magic's sum plus this */
+      closed_unattributed: number;
     };
     RiskActivityPage: {
       /** @description The filtered set */
@@ -7113,7 +7853,7 @@ export interface components {
      */
     CopyOutcome: "filled" | "refused" | "skipped" | "stopout";
     /**
-     * @description Why a copy did not fill. The list is closed: a new reason is a change to this contract. mapping: no follower symbol matched, or two did. min_volume: the scaled volume is under the follower's or the broker's minimum; it is never enlarged. no_stop: fixed_risk needs the leader's stop loss and there was none. risk_rule: a Risk Management rule on the follower account, or a leader or group limit, refused it. plan_limit: a Copy Trading limit of your plan. stopped_out: the follower is stopped out. signal_expired: the signal outlived its lifetime before it could be copied. skip_pending: the follower skips pending orders. close_only: the follower copies closes only. paused: the leader, the follower or its group is paused. account_not_connected: the follower account is not connected. market_closed: the symbol's market is closed. no_conversion: no current rate to convert the leader's figures into the follower account's currency. not_on_this_venue: the follower's venue cannot do what was asked. venue_unavailable: the venue did not answer. broker: the venue refused it; its own code is in `venue_code`.
+     * @description Why a copy did not fill. The list is closed: a new reason is a change to this contract. mapping: no follower symbol matched, or two did. min_volume: the scaled volume is under the follower's or the broker's minimum; it is never enlarged. no_stop: fixed_risk needs the leader's stop loss and there was none. risk_rule: a Risk Management rule on the follower account, or a leader or group limit, refused it. plan_limit: a Copy Trading limit of your plan. stopped_out: the follower is stopped out. signal_expired: the signal outlived its lifetime before it could be copied. skip_pending: the follower skips pending orders. close_only: the follower copies closes only. paused: the leader, the follower or its group is paused. account_not_connected: the follower account is not connected. market_closed: the symbol's market is closed. no_conversion: no current rate to convert the leader's figures into the follower account's currency, or, for a member of a group with an exposure cap, to price the copy's exposure in US dollars. not_on_this_venue: the follower's venue cannot do what was asked. venue_unavailable: the venue did not answer. broker: the venue refused it; its own code is in `venue_code`.
      * @enum {string}
      */
     CopyReason:
@@ -7378,6 +8118,12 @@ export interface components {
        * @default 0
        */
       delay_ms: number;
+      /**
+       * @description When the follower account is protected by Risk Management (an active policy or a challenge in progress) and its copy host cannot yet check a copy against it: refuse refuses the copy with risk_rule (reason risk_inputs_stale); copy copies it unchecked. Once the host can check, every copy is checked whatever this says
+       * @default refuse
+       * @enum {string}
+       */
+      when_risk_unchecked: "refuse" | "copy";
     };
     /** @description The follower's copy limits, as a percentage of `basis`, in the follower account's currency. Reaching one stops the follower out; with close_on_stopout its copied volume of this leader is closed, never the account's own positions. */
     CopyRiskLimits: {
@@ -7452,6 +8198,59 @@ export interface components {
       created_at: string;
       /** Format: date-time */
       updated_at: string;
+      /** @description The newest requested close of this follower's copied positions, in brief; null when none was asked. GET /copy/closes/{id} has it whole */
+      close?: components["schemas"]["CopyCloseSummary"] | null;
+      /** @description Its copied gross exposure and its share of its group's cap, in US dollars */
+      exposure?: components["schemas"]["CopyFollowerExposure"] | null;
+      /** @description The newest drift a resync measured: the copied volume missing from the account, as a percentage of what the ledger expected, 0.00 when nothing was. A resync that could not read the account leaves the last. Null when never measured */
+      drift?: components["schemas"]["CopyFollowerDrift"] | null;
+      /** @description Each copy limit's use as its copy host last reported it, in the account's currency. Null when the host has not reported it in the last 180 seconds, never zeros */
+      limits_use?: components["schemas"]["CopyLimitsUse"] | null;
+      /** @description Its copies of the current UTC day; null where it was not read */
+      today?: components["schemas"]["CopyFollowerToday"] | null;
+      /**
+       * @description Whether MFX Hub has braked this follower's account venue, as Copy Trading applies it. SUSPENDED: its mandate copies closes and stop changes only, whatever its own close_only, and a requested close still closes. DISABLED: nothing is copied and nothing is closed by the copy; a pending close waits, its give-up clock stopped, until the venue is enabled, and a follow, an update, a resume or a stop-out reset is refused 403 venue_suspended. An account whose venue row is retired or deleted reads DISABLED. Enabled again, its own settings are copied again
+       * @enum {string}
+       */
+      venue_state?: "ENABLED" | "SUSPENDED" | "DISABLED";
+    };
+    CopyFollowerDrift: {
+      /** @description A percentage to 0.01; above 0 is out of step */
+      pct: string;
+      /**
+       * Format: date-time
+       * @description When the resync measured it
+       */
+      at: string;
+    };
+    CopyLimitsUse: {
+      /**
+       * Format: date-time
+       * @description When the platform heard it from the copy host
+       */
+      as_of: string;
+      /** @description Each limit measured within the last 180 seconds; a follower with none measured that recently has limits_use null, never stale figures */
+      limits: {
+        limit: components["schemas"]["CopyLimitKind"];
+        /** @description The loss counted against the limit in its period, in the account's currency */
+        used: string;
+        /** @description What the limit allows in its period, in the account's currency */
+        allowed: string;
+        /** Format: date-time */
+        period_start: string;
+        /**
+         * Format: date-time
+         * @description When the copy host's read of the account measured it (when the platform heard it, from a host that does not say)
+         */
+        as_of: string;
+      }[];
+    };
+    CopyFollowerToday: {
+      /** @description Its copy log rows of the current UTC day */
+      copies: number;
+      filled: number;
+      /** @description The median of MFX Hub's part of each copy; null when none has the stages */
+      mfx_ms_p50: number | null;
     };
     CopyFollowerPage: {
       /** @description Over every follower the filters match, not this page */
@@ -7461,6 +8260,8 @@ export interface components {
         paused: number;
         stopped_out: number;
         unfollowed: number;
+        /** @description Of those, the ones out of step: not unfollowed, and their newest drift above 0 */
+        out_of_step?: number;
       };
       items: components["schemas"]["CopyFollower"][];
       next_cursor: string | null;
@@ -7573,6 +8374,15 @@ export interface components {
         follower_volume: string | null;
         /** @description Why this row would be refused; null when it would be copied */
         reason: components["schemas"]["CopyReason"] | null;
+        /** @description The leader symbol's contract as the row was worked from it: a lot's size for a symbol in lots, 1 for one counted in units; null when the leader's symbol was not found */
+        leader_contract_size: string | null;
+        /** @description The follower symbol's contract, as leader_contract_size; null when no symbol matched */
+        follower_contract_size: string | null;
+        /**
+         * @description The unit follower_volume is in; null when no symbol matched
+         * @enum {string|null}
+         */
+        follower_volume_unit: "lots" | "units" | null;
       }[];
     };
     /** @description Milliseconds each stage took, each measured on its own machine. A stage that did not happen for this copy is absent. broker_ms is the venue's time and is not MFX Hub's. */
@@ -7647,6 +8457,25 @@ export interface components {
       mfx_ms: number | null;
       /** @description deliver_ms + expand_ms + queue_ms + hand_ms: from a held signal to the order call */
       signal_to_order_ms: number | null;
+      deal: components["schemas"]["CopyLeaderDeal"];
+      /** @description The follower's own symbol, as its copy host named it; null where the copy was refused before the leader's instrument was mapped, and on rows from before 15 Nov 2026 */
+      symbol: string | null;
+      /** @description Risk Management's detail of a risk_rule refusal, in the 422 risk_refused shape (reason, rule, policy_id, version, used, limit, would_be, and challenge_id, challenge_version when a challenge's rule refused): figures as decimal strings in the follower account's currency (in US dollars when reason is copy_exposure_cap, limit being the follower's share of its group's cap), every field null where the host gave none. A host that predates the detail sends its reason alone, kept with every other field null. Null on every other row */
+      risk: {
+        /** @description Risk Management's reason, for example risk_daily_loss or risk_inputs_stale; copy_exposure_cap (rule gross_exposure_cap, no policy) when the copy would take the follower past its share of its group's gross exposure cap */
+        reason: string;
+        rule: string | null;
+        /** Format: uuid */
+        policy_id: string | null;
+        /** @description The policy's version */
+        version: number | null;
+        used: string | null;
+        limit: string | null;
+        would_be: string | null;
+        /** Format: uuid */
+        challenge_id?: string | null;
+        challenge_version?: number | null;
+      } | null;
     };
     CopyLogPage: {
       /** @description Over every row the filters and the window match, not this page */
@@ -7661,8 +8490,76 @@ export interface components {
         mfx_ms_p99: number | null;
         signal_to_order_ms_p50: number | null;
         broker_ms_p50: number | null;
+        /** @description Null when no row has the stages */
+        mfx_ms_p95: number | null;
+        signal_to_order_ms_p95: number | null;
+        broker_ms_p95: number | null;
       };
       items: components["schemas"]["CopyLogEntry"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    /** @description One leader fill or external signal as MFX Hub recorded it, the console's own row, with what became of its copies; never its signature, its key id or the source's body */
+    CopySignalEntry: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** @enum {string} */
+      kind: "fill" | "external";
+      /** @enum {string} */
+      action:
+        | "open"
+        | "modify"
+        | "close"
+        | "close_part"
+        | "pending_place"
+        | "pending_modify"
+        | "pending_cancel";
+      /** @enum {string} */
+      side: "buy" | "sell";
+      /** @description The leader's volume in base units, a decimal string */
+      volume_units: string;
+      price: string | null;
+      sl: string | null;
+      tp: string | null;
+      instrument_key: string | null;
+      leader_currency: string | null;
+      /** @description The external source's own id, or the leader fill's id */
+      source_id: string | null;
+      /** Format: date-time */
+      iat: string;
+      /** Format: date-time */
+      exp: string;
+      /** Format: date-time */
+      created_at: string;
+      /** @description How many of the signal's own copies, one a follower, were filled, refused and skipped; 0 where none. A stop-out's close names the signal it closes but is not its copy */
+      outcomes: {
+        filled: number;
+        refused: number;
+        skipped: number;
+      };
+    };
+    CopySignalPage: {
+      /** @description Over every signal the window and the filters match, not this page */
+      stats: {
+        signals: number;
+        fill: number;
+        external: number;
+      };
+      items: components["schemas"]["CopySignalEntry"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    CopyTenantStopoutPage: {
+      /** @description Over every stop-out the window and the filters match, not this page */
+      stats: {
+        stopouts: number;
+        active: number;
+        reset: number;
+        expired: number;
+      };
+      items: components["schemas"]["CopyStopout"][];
       next_cursor: string | null;
       returned?: number;
     };
@@ -7677,15 +8574,23 @@ export interface components {
     CopyGroupCreate: {
       name: string;
       template?: components["schemas"]["CopyGroupTemplate"];
-      /** @description The most gross exposure the group's followers may hold together, in your reporting currency; a copy over it is refused with risk_rule. Null is no cap */
+      /** @description The most gross exposure the group's followers may hold together from copies, in US dollars (the sum over their open copied positions of each one's base units times its opening price, converted to USD at the host's quotes). Each live member is signed an equal share, the cap over the live members rounded down to the cent, and its host refuses an open that would take it past its share with risk_rule (risk.reason copy_exposure_cap). Null is no cap */
       gross_exposure_cap?: components["schemas"]["CopyDecimal"] | null;
-      /** @description How the group's followers are placed; null is the platform's default */
+      /**
+       * @deprecated
+       * @description Deprecated: stored and returned; placement never reads it. Each follower is placed by its own venue (an MT5 terminal near its leader's cell, a cTrader account by the connector's pool), never by its group
+       */
       placement_policy?: string | null;
     };
     CopyGroupUpdate: {
       name?: string;
       template?: components["schemas"]["CopyGroupTemplate"];
+      /** @description The most gross exposure the group's followers may hold together from copies, in US dollars (the sum over their open copied positions of each one's base units times its opening price, converted to USD at the host's quotes). Each live member is signed an equal share, the cap over the live members rounded down to the cent, and its host refuses an open that would take it past its share with risk_rule (risk.reason copy_exposure_cap). Null is no cap */
       gross_exposure_cap?: components["schemas"]["CopyDecimal"] | null;
+      /**
+       * @deprecated
+       * @description Deprecated: stored and returned; placement never reads it. Each follower is placed by its own venue (an MT5 terminal near its leader's cell, a cTrader account by the connector's pool), never by its group
+       */
       placement_policy?: string | null;
     };
     CopyGroup: {
@@ -7693,7 +8598,12 @@ export interface components {
       id: string;
       name: string;
       template: components["schemas"]["CopyGroupTemplate"];
+      /** @description In US dollars; null is no cap */
       gross_exposure_cap: string | null;
+      /**
+       * @deprecated
+       * @description Deprecated: stored and returned; placement never reads it. Each follower is placed by its own venue (an MT5 terminal near its leader's cell, a cTrader account by the connector's pool), never by its group
+       */
       placement_policy: string | null;
       state: components["schemas"]["CopyGroupState"];
       followers_live: number;
@@ -7701,6 +8611,10 @@ export interface components {
       created_at: string;
       /** Format: date-time */
       updated_at: string;
+      /** @description Gross exposure held against the cap, in US dollars */
+      exposure?: components["schemas"]["CopyGroupExposure"] | null;
+      /** @description Its live members whose newest drift is above 0; null where it was not read */
+      out_of_step?: number | null;
     };
     CopyGroupPage: {
       stats: {
@@ -7735,7 +8649,7 @@ export interface components {
       signals_per_day: components["schemas"]["UsageLimit"];
       /** @description How long the copy log keeps a row; null when your contract sets it */
       log_retention_days: number | null;
-      /** @description Orders copied in the current UTC day; null where not yet measured */
+      /** @description Copies of leader deals filled in the current UTC day, from the copy log, each on the day of its leader's deal; the closes MFX orders itself (stop-outs, requested closes) are not copies. Shown, never enforced or billed. Null where not yet measured */
       copied_commands_today: number | null;
     };
     /** @description The leader's deal a copy came from, in venue-neutral terms */
@@ -7809,6 +8723,277 @@ export interface components {
       venue_code: string | null;
       /** @description The reason in words, for a person */
       why: string | null;
+      /** @description Risk Management's detail of a risk_rule refusal, in the 422 risk_refused shape (reason, rule, policy_id, version, used, limit, would_be, and challenge_id, challenge_version when a challenge's rule refused): figures as decimal strings in the follower account's currency (in US dollars when reason is copy_exposure_cap, limit being the follower's share of its group's cap), every field null where the host gave none. A host that predates the detail sends its reason alone, kept with every other field null. Null on every other row */
+      risk?: {
+        /** @description Risk Management's reason, for example risk_daily_loss or risk_inputs_stale; copy_exposure_cap (rule gross_exposure_cap, no policy) when the copy would take the follower past its share of its group's gross exposure cap */
+        reason: string;
+        rule: string | null;
+        /** Format: uuid */
+        policy_id: string | null;
+        /** @description The policy's version */
+        version: number | null;
+        used: string | null;
+        limit: string | null;
+        would_be: string | null;
+        /** Format: uuid */
+        challenge_id?: string | null;
+        challenge_version?: number | null;
+      } | null;
+      /** Format: date-time */
+      at: string;
+    };
+    /** @description A group's gross exposure against its cap, every figure in US dollars to the cent. Recorded from the copy hosts' answers behind the send, so a few seconds behind them. Each exposure is fixed at its copy's open (its price and rate then); a close lowers it by the fraction closed. */
+    CopyGroupExposure: {
+      /** @description gross_exposure_cap; null is no cap */
+      cap: string | null;
+      /** @description The exposure of the live members' open copied positions */
+      used: string;
+      /** @description Each live member's signed share: the cap over members, rounded down to the cent; null with no cap or no live member */
+      share: string | null;
+      /** @description The live members the cap is shared by (followers_live) */
+      members: number;
+      /** @description Open copied positions not in used: opened before exposure was recorded, or priced in another currency */
+      unpriced: number;
+      /** @description The open copied positions of followers that left the group (unfollowed without close_copied, or removed): copied under it, no longer counted in used or against the cap */
+      leavers: {
+        /** @description Their exposure, in US dollars */
+        used: string;
+        /** @description Of those rows, the ones with no exposure or in another currency */
+        unpriced: number;
+      };
+      /** @description Live members whose account runs on a host that cannot enforce its share yet (a copy host older than the release that enforces it, or one that does not report its version): their copies are not held to the share, so used can pass the cap */
+      unenforced: number;
+      /**
+       * Format: date-time
+       * @description When it was read
+       */
+      as_of: string;
+    };
+    /** @description A follower's copied gross exposure and its share of its group's cap, in US dollars to the cent */
+    CopyFollowerExposure: {
+      /** @description The exposure of its open copied positions priced in USD */
+      used: string;
+      /** @description Its signed share of its group's cap; null in no group, a group with no cap, or once unfollowed */
+      share: string | null;
+    };
+    CopyGroupClose: {
+      /** @description Why, kept on each close and the audit row */
+      reason: string;
+      /** @description true pauses the group in the same act; false leaves its state. Required, no default */
+      pause: boolean;
+    };
+    CopyGroupRollover: {
+      /** @description true answers what would change and changes nothing */
+      dry_run: boolean;
+      /** @description The template fields to set; by default every field the template sets */
+      fields?: ("scaling" | "bounds" | "options" | "risk_limits" | "close_on_stopout")[];
+      /**
+       * Format: uuid
+       * @description The page after this member id: the previous answer's next_after
+       */
+      after?: string | null;
+      /** @default 500 */
+      limit: number;
+    };
+    CopyGroupRolloverResult: {
+      /** Format: uuid */
+      group_id: string;
+      dry_run: boolean;
+      /** @description The fields set */
+      fields: string[];
+      /** @description Each member of the page, in id order */
+      results: {
+        /** Format: uuid */
+        follower_id: string;
+        /** @enum {string} */
+        outcome: "changed" | "unchanged" | "refused";
+        /** @description Each field changed, with its from and to; empty unless changed */
+        changes: {
+          [key: string]: {
+            from: unknown;
+            to: unknown;
+          };
+        };
+        /** @description Why it was refused, as an update of it would be; null otherwise */
+        reason: string | null;
+      }[];
+      /**
+       * Format: uuid
+       * @description The last member answered when more follow; null after the last page
+       */
+      next_after: string | null;
+    };
+    CopyGroupCloseResult: {
+      /** Format: uuid */
+      group_id: string;
+      /**
+       * Format: uuid
+       * @description GET /copy/closes?batch_id= lists them
+       */
+      batch_id: string;
+      /** @description Whether the group is paused now */
+      paused: boolean;
+      /** @description The live members a close was asked for */
+      followers: number;
+      /** @description Each member's close, in member id order */
+      closes: string[];
+    };
+    /**
+     * @description pending: still being closed. done: every copied position closed or found closed. incomplete: any not closed. superseded: a newer request for the follower took over its open positions
+     * @enum {string}
+     */
+    CopyCloseState: "pending" | "done" | "incomplete" | "superseded";
+    /** @enum {string} */
+    CopyCloseCause: "unfollowed" | "leader_retired" | "group_close" | "orphan_close";
+    CopyCloseSummary: {
+      /** Format: uuid */
+      id: string;
+      state: components["schemas"]["CopyCloseState"];
+      cause: components["schemas"]["CopyCloseCause"];
+      /** @description Copied positions it covers */
+      positions: number;
+      /** @description Of them, closed or found closed already */
+      closed: number;
+      attempt: number;
+      /** Format: date-time */
+      created_at: string;
+    };
+    CopyCloseAttempt: {
+      /**
+       * Format: uuid
+       * @description The close whose order it was: a position carried over from a superseded close keeps that close's attempts
+       */
+      close_id: string;
+      attempt: number;
+      /**
+       * Format: uuid
+       * @description The close order's command; null where the account's positions settled an attempt that had no answer
+       */
+      command_id: string | null;
+      /** @enum {string} */
+      outcome: "filled" | "refused" | "unknown";
+      /** @description On a refusal: signal_expired, expired, account_not_connected, not_current, margin_mode_unknown, market_closed, broker, already_closed, position_not_open (the venue says the position is not open), netting, not_copied or copy_mismatch (opened after a group close's cutoff) */
+      reason: string | null;
+      /** @description The venue's own code beside broker */
+      venue_code: string | null;
+      /** @description On a fill, the volume the venue closed, in the follower venue's unit */
+      volume_closed: string | null;
+      /** @description The venue's volume of the position after the close; null when it is gone or was not read */
+      volume_after: string | null;
+      /** Format: date-time */
+      at: string;
+    };
+    CopyCloseEntry: {
+      /**
+       * Format: uuid
+       * @description The copied position on the ledger; null for a copy that filled after the close was asked and that the ledger had not recorded
+       */
+      position_id: string | null;
+      leader_position_ref: string;
+      /** @description The follower's symbol */
+      symbol: string;
+      /** @description The copied volume asked to close, in the follower venue's unit */
+      volume: string | null;
+      /** @enum {string} */
+      state: "open" | "closed" | "already_closed" | "not_closed";
+      /**
+       * @description Why it is not closed: a netting account its host cannot read, a position no copy of the follower opened, one opened after a group close's cutoff, or the close stopped at its give-up time
+       * @enum {string|null}
+       */
+      why: "netting" | "not_copied" | "copy_mismatch" | "gave_up" | null;
+      /** @description The venue closed less than the copied volume: the account's own trading had already cut it */
+      cut: boolean;
+      /** @description The volume MFX Hub closed of it, every attempt together */
+      closed_volume: string;
+      attempts: components["schemas"]["CopyCloseAttempt"][];
+    };
+    /** @description A requested close of one follower's copied positions: asked by `unfollowCopyLeader` or `retireCopyLeader` with `close_copied`, or by a group's close, and carried to the account's copy host in the follower's signed mandate. Only the volume copied from the leader is closed, never the account's own. A refusal that says nothing was done (a market closed, a broker error) is tried again, waiting twice as long each time up to 15 minutes, until the close is given up (72 hours by default); an order with no answer is never tried blind: the account's positions decide. */
+    CopyClose: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      follower_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /**
+       * Format: uuid
+       * @description The follower account
+       */
+      account_id: string;
+      /**
+       * Format: uuid
+       * @description The group, for a group's close
+       */
+      group_id: string | null;
+      /**
+       * Format: uuid
+       * @description One act over several followers: a group's close, or a leader's retire; null for an unfollow
+       */
+      batch_id: string | null;
+      cause: components["schemas"]["CopyCloseCause"];
+      /** @description The retire's or the group close's reason as sent */
+      reason: string | null;
+      /**
+       * Format: date-time
+       * @description Null: every copied position. A time: those opened by leader deals signalled at or before it
+       */
+      cutoff_at: string | null;
+      /** @description The API key's id, or the operator */
+      requested_by: string;
+      attempt: number;
+      /**
+       * Format: date-time
+       * @description When MFX Hub looks at it again; null once it is not pending
+       */
+      next_attempt_at: string | null;
+      state: components["schemas"]["CopyCloseState"];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      finished_at: string | null;
+      entries: components["schemas"]["CopyCloseEntry"][];
+    };
+    CopyClosePage: {
+      /** @description Over every close the filters and the window match, not this page */
+      stats: {
+        pending: number;
+        done: number;
+        incomplete: number;
+        superseded: number;
+      };
+      items: components["schemas"]["CopyClose"][];
+      next_cursor: string | null;
+      returned?: number;
+    };
+    /** @description `data` of `copy.closed`: a requested close stopped being pending. Sent once; a failure between the send and its record can send it again with the same close_id, never not at all */
+    CopyClosedEvent: {
+      schema_version: string;
+      /** Format: uuid */
+      close_id: string;
+      /** Format: uuid */
+      follower_id: string;
+      /** Format: uuid */
+      leader_id: string;
+      /** Format: uuid */
+      account_id: string;
+      venue: components["schemas"]["Venue"];
+      cause: components["schemas"]["CopyCloseCause"];
+      /** @enum {string} */
+      state: "done" | "incomplete" | "superseded";
+      /** @description Each copied position closed (volume the venue closed) or found closed already (volume 0, no command) */
+      closed: {
+        symbol: string;
+        volume: string;
+        /** Format: uuid */
+        command_id: string | null;
+      }[];
+      /** @description Each copied position not closed, with why */
+      not_closed: {
+        symbol: string;
+        volume: string | null;
+        /** @enum {string|null} */
+        why: "netting" | "not_copied" | "copy_mismatch" | "gave_up" | null;
+      }[];
       /** Format: date-time */
       at: string;
     };
@@ -7869,6 +9054,952 @@ export interface components {
       /** Format: date-time */
       at: string;
     };
+    /**
+     * @description US dollars as a decimal string, signed where money leaves a balance, e.g. "-0.250000". Exact to six decimal places in the API. Display rule: two places on tiles and totals, four on a per-day rate in a table; never rounded before it is summed.
+     * @example 184.20
+     */
+    BillingUsd: string;
+    /** @description What stops on the suspension date: the MT5 terminals disabled and the cTrader connections stopped, and the accounts they serve */
+    BillingAffects: {
+      mt5_terminals: number;
+      ctrader_connections: number;
+      accounts: {
+        /** Format: uuid */
+        id: string;
+        name: string;
+        /** @enum {string} */
+        venue: "mt5" | "ctrader";
+      }[];
+    };
+    /** @description Where a billing profile stands on payment. `ok`: nothing is due. `notice`: a prepaid balance will last fewer days than the notice setting, or an invoice is due within it. `reminder`: the balance is used up or the invoice is past due; `suspends_at` is the first suspended moment and `pay_by` the last moment a payment avoids it, and requests that add something billed are refused with 402 `billing_payment_required`. `suspended`: the profile's MT5 terminals are disabled and its cTrader connections stopped, nothing deleted, and suspended days are not billed. Paying releases them. */
+    BillingStanding: {
+      /** @enum {string} */
+      stage: "ok" | "notice" | "reminder" | "suspended";
+      /**
+       * @description Null when the stage is ok
+       * @enum {string|null}
+       */
+      cause: "low_balance" | "balance_used_up" | "invoice_due" | "invoice_overdue" | null;
+      /**
+       * Format: date-time
+       * @description When the stage began; null when ok
+       */
+      since: string | null;
+      /**
+       * Format: date-time
+       * @description From the reminder: the first suspended moment; null otherwise
+       */
+      suspends_at: string | null;
+      /**
+       * Format: date-time
+       * @description From the reminder: the last moment a payment avoids the suspension; null otherwise
+       */
+      pay_by: string | null;
+      /**
+       * Format: date-time
+       * @description MFX Hub has held the suspension until then; null when not held
+       */
+      held_until?: string | null;
+      /** @description Prepaid: whole days the balance covers at today's daily charge */
+      covers_days?: number | null;
+      /**
+       * Format: uuid
+       * @description The invoice the notice or reminder is about
+       */
+      invoice_id?: string | null;
+      affects?: components["schemas"]["BillingAffects"] | null;
+      action: components["schemas"]["BillingAction"] | null;
+      /** @description While the stage is ok or notice: the steps still to come if nothing is paid (the first notice, the reminder and the suspension), each dated from the settings billing.notice.invoice_due_days, billing.notice.low_credit_days, billing.reminder.after_due_days and billing.suspend.cooldown_days.<plan>. A step already reached is left out; empty when nothing is due and the balance outlasts the forecast. Absent from the reminder on, where suspends_at and pay_by say it. A held suspension (held_until) moves the suspension step. */
+      planned?: {
+        /** Format: date-time */
+        at: string;
+        /** @enum {string} */
+        step: "notice" | "reminder" | "suspension";
+        /** @description The step in words, e.g. Reminder, if unpaid: names the suspension date */
+        text: string;
+      }[];
+    };
+    /** @description What the payer can do to clear the standing; null when the stage is ok */
+    BillingAction: {
+      /** @enum {string} */
+      kind: "top_up" | "pay_invoice";
+      /** @description The portal page that does it, relative to the portal's address, e.g. /billing/top-up */
+      portal_path: string;
+      /** @description At least this much clears the standing */
+      amount_usd?: components["schemas"]["BillingUsd"];
+      /** Format: uuid */
+      invoice_id?: string | null;
+    };
+    /**
+     * @description `details` of a 402 `billing_payment_required`
+     * @example {
+     *       "tenant_id": "6f1c2a0e-1b8d-4f7a-9a51-7d0c1a2b3c4d",
+     *       "billing_profile_id": "0b7e5c1a-3d2f-4e6a-8b9c-1d2e3f4a5b6c",
+     *       "stage": "reminder",
+     *       "cause": "balance_used_up",
+     *       "since": "2026-11-20T00:05:00Z",
+     *       "suspends_at": "2026-11-23T00:05:00Z",
+     *       "pay_by": "2026-11-23T00:04:59Z",
+     *       "action": {
+     *         "kind": "top_up",
+     *         "portal_path": "/billing/top-up",
+     *         "amount_usd": "10.00",
+     *         "invoice_id": null
+     *       }
+     *     }
+     */
+    BillingPaymentRequiredDetails: {
+      /** Format: uuid */
+      tenant_id: string;
+      /**
+       * Format: uuid
+       * @description The profile the request falls under; on Standard, its one profile
+       */
+      billing_profile_id: string;
+      /** @enum {string} */
+      stage: "reminder" | "suspended";
+      /** @enum {string} */
+      cause: "balance_used_up" | "invoice_overdue";
+      /** Format: date-time */
+      since: string;
+      /**
+       * Format: date-time
+       * @description The first suspended moment
+       */
+      suspends_at: string;
+      /**
+       * Format: date-time
+       * @description The last moment a payment avoids the suspension
+       */
+      pay_by: string;
+      /** @description action.portal_path is the portal page that clears it; an SDK builds the link from the portal's address. action.amount_usd and action.invoice_id are present only for a caller with billing permission (an API key with billing:read, or a member with Billing: Read on this profile); for anyone else they are absent and the path names no invoice */
+      action: components["schemas"]["BillingAction"];
+    };
+    /** @description The error envelope of a 402 billing_payment_required, with its details */
+    BillingPaymentRequiredError: {
+      error: components["schemas"]["ErrorBody"] & {
+        details: components["schemas"]["BillingPaymentRequiredDetails"];
+      };
+    };
+    BillingAutomaticTopUp: {
+      enabled: boolean;
+      /** @description Fires when the balance falls under this, from $5 in steps of $5 */
+      level_usd: components["schemas"]["BillingUsd"];
+      /** @description From $10 in steps of $5 */
+      amount_usd: components["schemas"]["BillingUsd"];
+      /** @description Portal only: which card, then the backup */
+      charged_to?: string | null;
+      /** Format: date */
+      next_expected_on?: string | null;
+    };
+    /** @description The profile's last failed charge; null when there is none since the last success */
+    BillingLastFailure: {
+      /** Format: date-time */
+      at: string;
+      /** Format: uuid */
+      method_id: string;
+      /** @description e.g. Visa ending 4242 */
+      method_label: string;
+      /** @enum {string} */
+      decline:
+        | "insufficient_funds"
+        | "card_declined"
+        | "expired"
+        | "authentication_required"
+        | "processor_error"
+        | "other";
+      backup_tried: boolean;
+    };
+    /** @description One billing profile as the summary shows it. Every money read below is per profile */
+    BillingProfileSummary: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /**
+       * @description How the profile pays. Invoice is a mode of the profile, not a payment method
+       * @enum {string}
+       */
+      mode: "prepaid" | "invoice";
+      /**
+       * @description Where the mode comes from, read only. agreement: an agreement is in force and every profile of the organisation pays in its payment mode. plan: none is in force, and the mode is the one the profile was created with, within what the plan allows (Standard: prepaid). A profile's mode is never changed on the profile itself
+       * @enum {string}
+       */
+      readonly mode_source?: "agreement" | "plan";
+      /** @description Standard has exactly one profile, its default */
+      is_default: boolean;
+      /** @description Cash and credit; negative on an invoiced profile by what it owes */
+      balance_usd: components["schemas"]["BillingUsd"];
+      /** @description The part of the balance that is credit, spent first and never paid out */
+      credit_usd?: components["schemas"]["BillingUsd"];
+      /** @description Today's daily charge: every account and add-on in scope at this month's daily rate */
+      daily_usd: components["schemas"]["BillingUsd"];
+      month_to_date_usd: components["schemas"]["BillingUsd"];
+      /** @description Month to date plus today's daily charge for the days left */
+      forecast_month_usd?: components["schemas"]["BillingUsd"];
+      /** @description Null for no cap */
+      monthly_cap_usd?: components["schemas"]["BillingUsd"] | null;
+      cap_used_pct?: number | null;
+      /** @enum {string} */
+      at_cap?: "warn_then_stop" | "warn_only";
+      automatic_top_up?: components["schemas"]["BillingAutomaticTopUp"] | null;
+      /** @description Accounts in the profile's scope */
+      accounts?: number;
+      covers_summary?: {
+        farms: number;
+        accounts: number;
+      };
+      /** @description How it pays, in words: e.g. Visa ending 4242, or Invoice, 30 days */
+      paid_by?: string;
+      last_failure?: components["schemas"]["BillingLastFailure"] | null;
+      /** @description The open amount of the profile's invoices past their due date; "0.00" when none is, and on a prepaid profile */
+      overdue_usd?: components["schemas"]["BillingUsd"];
+      standing: components["schemas"]["BillingStanding"];
+    };
+    /** @description The plan the organisation is on and the prices it pays. An Enterprise organisation with an agreement in force pays the agreement's prices (`contract_rate_card` true) and `agreement` names it; otherwise it pays the list version in force. */
+    BillingPlanRef: {
+      /** @description e.g. standard or enterprise */
+      key: string;
+      name: string;
+      rate_card_version: string;
+      /** @description True when the organisation pays its own agreement's prices, not the list */
+      contract_rate_card: boolean;
+      /** @description The agreement in force; null when none is, always on Standard */
+      agreement?: components["schemas"]["BillingAgreementRef"] | null;
+    };
+    /** @description Portal only: the bounds a top-up, a cap and an automatic top-up take, so a field can show them */
+    BillingRules: {
+      top_up_min_usd?: components["schemas"]["BillingUsd"];
+      top_up_step_usd?: components["schemas"]["BillingUsd"];
+      top_up_max_usd?: components["schemas"]["BillingUsd"];
+      cap_min_usd?: components["schemas"]["BillingUsd"];
+      cap_step_usd?: components["schemas"]["BillingUsd"];
+      /** @description Null for no upper bound */
+      cap_max_usd?: components["schemas"]["BillingUsd"] | null;
+      cap_warn_pct?: number;
+      auto_top_up_level_min_usd?: components["schemas"]["BillingUsd"];
+      auto_top_up_level_step_usd?: components["schemas"]["BillingUsd"];
+      auto_top_up_amount_min_usd?: components["schemas"]["BillingUsd"];
+      auto_top_up_amount_step_usd?: components["schemas"]["BillingUsd"];
+      /** @description A prepaid profile is in notice when its balance will last fewer than this many days at today's daily charge */
+      readonly low_credit_notice_days?: number;
+      /** @description An unpaid invoice puts its profile in notice this many days before it is due */
+      readonly invoice_due_notice_days?: number;
+      /** @description Days past the due date an unpaid invoice moves its profile to the reminder; 0 is on the due date */
+      readonly reminder_after_due_days?: number;
+      /** @description Days from the reminder to the suspension on this organisation's plan; 0 is the same day */
+      readonly cooldown_days?: number;
+    };
+    /**
+     * @description The organisation's billing: every billing profile with its standing. Standard has one, implicit profile (`implicit_profile` true); Enterprise may have several. `standing` at the top is the most urgent of the profiles'. An Enterprise organisation's agreement in force is named in `plan.agreement`.
+     * @example {
+     *       "currency": "USD",
+     *       "plan": {
+     *         "key": "standard",
+     *         "name": "Standard",
+     *         "rate_card_version": "rc_v3",
+     *         "contract_rate_card": false
+     *       },
+     *       "implicit_profile": true,
+     *       "standing": {
+     *         "stage": "notice",
+     *         "cause": "low_balance",
+     *         "since": "2026-11-16T00:05:00Z",
+     *         "suspends_at": null,
+     *         "pay_by": null,
+     *         "held_until": null,
+     *         "covers_days": 5,
+     *         "invoice_id": null,
+     *         "affects": null,
+     *         "action": {
+     *           "kind": "top_up",
+     *           "portal_path": "/billing/top-up",
+     *           "amount_usd": "10.00",
+     *           "invoice_id": null
+     *         }
+     *       },
+     *       "profiles": [
+     *         {
+     *           "id": "0b7e5c1a-3d2f-4e6a-8b9c-1d2e3f4a5b6c",
+     *           "name": "Default",
+     *           "mode": "prepaid",
+     *           "is_default": true,
+     *           "balance_usd": "9.500000",
+     *           "credit_usd": "0.000000",
+     *           "daily_usd": "1.716667",
+     *           "month_to_date_usd": "25.85",
+     *           "forecast_month_usd": "51.60",
+     *           "monthly_cap_usd": null,
+     *           "cap_used_pct": null,
+     *           "at_cap": "warn_then_stop",
+     *           "automatic_top_up": null,
+     *           "accounts": 5,
+     *           "covers_summary": {
+     *             "farms": 0,
+     *             "accounts": 5
+     *           },
+     *           "paid_by": "Visa ending 4242",
+     *           "last_failure": null,
+     *           "standing": {
+     *             "stage": "notice",
+     *             "cause": "low_balance",
+     *             "since": "2026-11-16T00:05:00Z",
+     *             "suspends_at": null,
+     *             "pay_by": null,
+     *             "held_until": null,
+     *             "covers_days": 5,
+     *             "invoice_id": null,
+     *             "affects": null,
+     *             "action": {
+     *               "kind": "top_up",
+     *               "portal_path": "/billing/top-up",
+     *               "amount_usd": "10.00",
+     *               "invoice_id": null
+     *             }
+     *           }
+     *         }
+     *       ],
+     *       "open_invoices": {
+     *         "count": 0,
+     *         "open_usd": "0.00",
+     *         "overdue_usd": "0.00"
+     *       },
+     *       "rules": {
+     *         "top_up_min_usd": "10.00",
+     *         "top_up_step_usd": "5.00",
+     *         "top_up_max_usd": "5000.00",
+     *         "cap_min_usd": "10.00",
+     *         "cap_step_usd": "5.00",
+     *         "cap_max_usd": null,
+     *         "cap_warn_pct": 80,
+     *         "auto_top_up_level_min_usd": "5.00",
+     *         "auto_top_up_level_step_usd": "5.00",
+     *         "auto_top_up_amount_min_usd": "10.00",
+     *         "auto_top_up_amount_step_usd": "5.00",
+     *         "low_credit_notice_days": 7,
+     *         "invoice_due_notice_days": 7,
+     *         "reminder_after_due_days": 1,
+     *         "cooldown_days": 3
+     *       },
+     *       "verification": null
+     *     }
+     */
+    BillingSummary: {
+      /** @enum {string} */
+      currency: "USD";
+      plan: components["schemas"]["BillingPlanRef"];
+      implicit_profile: boolean;
+      standing: components["schemas"]["BillingStanding"];
+      profiles: components["schemas"]["BillingProfileSummary"][];
+      open_invoices: {
+        count: number;
+        open_usd: components["schemas"]["BillingUsd"];
+        overdue_usd: components["schemas"]["BillingUsd"];
+      };
+      rules?: components["schemas"]["BillingRules"];
+      /** @description Enterprise: where the organisation's verification stands, read only, for the Verified mark on Billing. The status and its documents belong to the organisation, not to billing; this names the status only. Null on a plan with no verification, which includes Standard. */
+      verification?: components["schemas"]["BillingVerificationRef"] | null;
+    };
+    /** @description Where the organisation's verification stands. Only verified unlocks what waits for it, such as invoices */
+    BillingVerificationRef: {
+      /** @enum {string} */
+      readonly status:
+        "not_started" | "submitted" | "in_review" | "verified" | "more_needed" | "rejected";
+      /** @description True when status is verified */
+      readonly verified: boolean;
+      /**
+       * Format: date-time
+       * @description When it was last verified; null when it is not
+       */
+      readonly verified_at?: string | null;
+      /**
+       * Format: date
+       * @description A verified organisation is verified again every 12 months
+       */
+      readonly renewal_due?: string | null;
+    };
+    /** @description One billing profile in full */
+    BillingProfile: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /**
+       * @description How the profile pays. Invoice is a mode of the profile, not a payment method
+       * @enum {string}
+       */
+      mode: "prepaid" | "invoice";
+      /**
+       * @description Where the mode comes from, read only. agreement: an agreement is in force and every profile of the organisation pays in its payment mode. plan: none is in force, and the mode is the one the profile was created with, within what the plan allows (Standard: prepaid). A profile's mode is never changed on the profile itself
+       * @enum {string}
+       */
+      readonly mode_source?: "agreement" | "plan";
+      is_default: boolean;
+      balance_usd: components["schemas"]["BillingUsd"];
+      credit_usd?: components["schemas"]["BillingUsd"];
+      daily_usd: components["schemas"]["BillingUsd"];
+      month_to_date_usd: components["schemas"]["BillingUsd"];
+      forecast_month_usd?: components["schemas"]["BillingUsd"];
+      /** @description Null for no cap */
+      monthly_cap_usd?: components["schemas"]["BillingUsd"] | null;
+      cap_used_pct?: number | null;
+      /** @enum {string} */
+      at_cap?: "warn_then_stop" | "warn_only";
+      automatic_top_up?: components["schemas"]["BillingAutomaticTopUp"] | null;
+      /** @description Invoiced profiles */
+      terms_days?: number | null;
+      po_reference?: string | null;
+      /** Format: date */
+      next_invoice_on?: string | null;
+      covers_summary?: {
+        farms: number;
+        accounts: number;
+      };
+      paid_by?: string;
+      last_failure?: components["schemas"]["BillingLastFailure"] | null;
+      standing: components["schemas"]["BillingStanding"];
+      /** @description Portal only */
+      methods?: {
+        primary?: components["schemas"]["BillingPaymentMethod"] | null;
+        backup?: components["schemas"]["BillingPaymentMethod"] | null;
+      };
+      /** @description Portal only: whether an account may be moved to this profile through the API */
+      allow_api_moves?: boolean;
+      /** @description Portal only: the farms and accounts the profile covers, each from the UTC day it joined */
+      scope?: {
+        /** @enum {string} */
+        kind: "farm" | "account";
+        /** Format: uuid */
+        id: string;
+        name?: string;
+        accounts?: number;
+        /** Format: date */
+        from_day: string;
+      }[];
+      /** @description Portal only: who receives the profile's billing notices */
+      recipients?: components["schemas"]["BillingRecipient"][];
+    };
+    BillingRecipient: {
+      /** @enum {string} */
+      kind: "email" | "member";
+      /** @description An address, or a member's person id */
+      ref: string;
+      events: (
+        | "notice"
+        | "reminder"
+        | "suspended"
+        | "cap"
+        | "payment_failed"
+        | "invoice"
+        | "documents"
+        | "price_change"
+      )[];
+    };
+    /**
+     * @description This month for one billing profile: to date by product, and the forecast to month end at today's accounts and add-ons. Quantities are account-days; a full month of one account is as many account-days as the month has days.
+     * @example {
+     *       "month": "2026-11",
+     *       "billing_profile_id": "0b7e5c1a-3d2f-4e6a-8b9c-1d2e3f4a5b6c",
+     *       "days_in_month": 30,
+     *       "days_billed": 15,
+     *       "to_date_usd": "25.85",
+     *       "forecast_usd": "51.60",
+     *       "tax_forecast_usd": "5.16",
+     *       "lines": [
+     *         {
+     *           "key": "account.mt5",
+     *           "account_days": 75,
+     *           "daily_usd": "0.250000",
+     *           "to_date_usd": "18.75",
+     *           "forecast_usd": "37.50"
+     *         },
+     *         {
+     *           "key": "addon.expert_advisors",
+     *           "account_days": 30,
+     *           "daily_usd": "0.200000",
+     *           "to_date_usd": "6.00",
+     *           "forecast_usd": "12.00"
+     *         },
+     *         {
+     *           "key": "account.ctrader",
+     *           "account_days": 10,
+     *           "daily_usd": "0.083333",
+     *           "to_date_usd": "0.83",
+     *           "forecast_usd": "0.83"
+     *         },
+     *         {
+     *           "key": "addon.risk_management",
+     *           "account_days": 4,
+     *           "daily_usd": "0.066667",
+     *           "to_date_usd": "0.27",
+     *           "forecast_usd": "1.27"
+     *         }
+     *       ],
+     *       "talk_to_sales": false
+     *     }
+     */
+    BillingForecast: {
+      month: string;
+      /** Format: uuid */
+      billing_profile_id: string;
+      days_in_month: number;
+      /** @description UTC days charged so far: a day is charged just after it ends */
+      days_billed: number;
+      to_date_usd: components["schemas"]["BillingUsd"];
+      forecast_usd: components["schemas"]["BillingUsd"];
+      tax_forecast_usd?: components["schemas"]["BillingUsd"];
+      lines: {
+        /** @description The price-list item, e.g. account.mt5 */
+        key: string;
+        /** @description Account-days charged to date */
+        account_days: number;
+        /** @description This month's daily rate: the monthly price divided by the days in the month */
+        daily_usd?: components["schemas"]["BillingUsd"];
+        to_date_usd: components["schemas"]["BillingUsd"];
+        forecast_usd: components["schemas"]["BillingUsd"];
+      }[];
+      talk_to_sales: boolean;
+    };
+    /**
+     * @description A price list: the plans and every item with its monthly price. Billing is per day: each account and each add-on on it costs its monthly price divided by the days in that month, for every day it exists, with a minimum of one day; a full month costs the monthly price.
+     * @example {
+     *       "version": "rc_v3",
+     *       "scope": "list",
+     *       "effective_from": "2026-12-01T00:00:00Z",
+     *       "currency": "USD",
+     *       "rule": "Per account, and per add-on on it, for every day it exists: the monthly price divided by the days in that month, at least one day. A full month is the monthly price.",
+     *       "plans": [
+     *         {
+     *           "key": "developer",
+     *           "name": "Developer",
+     *           "price": "free",
+     *           "accounts": "1 demo account, 30 days"
+     *         },
+     *         {
+     *           "key": "standard",
+     *           "name": "Standard",
+     *           "max_running_accounts": 50,
+     *           "pay": "prepaid_card"
+     *         },
+     *         {
+     *           "key": "enterprise",
+     *           "name": "Enterprise",
+     *           "price": "contract",
+     *           "block_terminals": 20,
+     *           "pay": "invoice_or_prepaid",
+     *           "talk_to_sales": true
+     *         }
+     *       ],
+     *       "items": [
+     *         {
+     *           "key": "account.mt5",
+     *           "kind": "base",
+     *           "venue": "mt5",
+     *           "name": "MetaTrader 5® account",
+     *           "unit": "account_month",
+     *           "monthly_usd": "7.50",
+     *           "plans": {
+     *             "standard": "available",
+     *             "enterprise": "contract"
+     *           }
+     *         },
+     *         {
+     *           "key": "account.ctrader",
+     *           "kind": "base",
+     *           "venue": "ctrader",
+     *           "name": "cTrader account",
+     *           "unit": "account_month",
+     *           "monthly_usd": "2.50",
+     *           "plans": {
+     *             "standard": "available",
+     *             "enterprise": "contract"
+     *           }
+     *         },
+     *         {
+     *           "key": "addon.expert_advisors",
+     *           "kind": "add_on",
+     *           "venue": "mt5",
+     *           "name": "Expert advisors",
+     *           "unit": "account_month",
+     *           "monthly_usd": "6.00",
+     *           "plans": {
+     *             "standard": "available",
+     *             "enterprise": "contract"
+     *           }
+     *         },
+     *         {
+     *           "key": "addon.copy_follower",
+     *           "kind": "add_on",
+     *           "name": "Copy Trading (follower)",
+     *           "unit": "account_month",
+     *           "monthly_usd": "1.00",
+     *           "plans": {
+     *             "standard": "available",
+     *             "enterprise": "contract"
+     *           }
+     *         },
+     *         {
+     *           "key": "addon.risk_management",
+     *           "kind": "add_on",
+     *           "name": "Risk Management",
+     *           "unit": "account_month",
+     *           "monthly_usd": "2.00",
+     *           "plans": {
+     *             "standard": "available",
+     *             "enterprise": "contract"
+     *           }
+     *         },
+     *         {
+     *           "key": "addon.trading_statistics",
+     *           "kind": "add_on",
+     *           "name": "Trading statistics",
+     *           "unit": "account_month",
+     *           "monthly_usd": "0.00",
+     *           "plans": {
+     *             "standard": "included",
+     *             "enterprise": "included"
+     *           }
+     *         },
+     *         {
+     *           "key": "enterprise.block",
+     *           "kind": "block",
+     *           "venue": "mt5",
+     *           "name": "Enterprise block (20 terminals)",
+     *           "unit": "block_month",
+     *           "monthly_usd": "210.00",
+     *           "includes": [
+     *             "account.mt5",
+     *             "addon.copy_follower",
+     *             "addon.risk_management"
+     *           ],
+     *           "provisional": "until the confidential cells are measured",
+     *           "plans": {
+     *             "standard": "none",
+     *             "enterprise": "minimum_one"
+     *           }
+     *         }
+     *       ],
+     *       "included": [
+     *         "API and SDKs",
+     *         "the stream",
+     *         "webhooks",
+     *         "market data for your accounts",
+     *         "history",
+     *         "trading statistics",
+     *         "refresh every 1000 ms"
+     *       ],
+     *       "talk_to_sales_when": {
+     *         "running_accounts_over": 50,
+     *         "estimate_usd_over": "500.00",
+     *         "items": [
+     *           "addon.ha_active_active",
+     *           "enterprise.block"
+     *         ]
+     *       },
+     *       "next": {
+     *         "version": "rc_v4",
+     *         "effective_from": "2027-01-01T00:00:00Z",
+     *         "changes": [
+     *           {
+     *             "key": "account.mt5",
+     *             "monthly_usd": "8.00"
+     *           }
+     *         ]
+     *       },
+     *       "as_of": "2026-11-16T12:00:00Z"
+     *     }
+     */
+    BillingPriceList: {
+      version: string;
+      /**
+       * @description tenant: your agreement's own prices (GET /billing/prices only)
+       * @enum {string}
+       */
+      scope?: "list" | "tenant";
+      /** @description Your own prices only: the agreement they come from; null or absent on the list */
+      agreement?: components["schemas"]["BillingAgreementRef"] | null;
+      /** Format: date-time */
+      effective_from: string;
+      /** @enum {string} */
+      currency: "USD";
+      /** @description The billing rule in one sentence */
+      rule: string;
+      plans: {
+        key: string;
+        name: string;
+        /** @description free, or contract; null when priced per item */
+        price?: string | null;
+        accounts?: string | null;
+        max_running_accounts?: number | null;
+        /** @enum {string|null} */
+        pay?: "free" | "prepaid_card" | "invoice_or_prepaid" | null;
+        block_terminals?: number | null;
+        talk_to_sales?: boolean;
+      }[];
+      items: {
+        key: string;
+        /** @enum {string} */
+        kind: "base" | "add_on" | "block" | "one_off";
+        /** @enum {string|null} */
+        venue?: "mt5" | "ctrader" | null;
+        name: string;
+        description?: string | null;
+        /** @enum {string} */
+        unit: "account_month" | "block_month" | "once";
+        monthly_usd: components["schemas"]["BillingUsd"];
+        includes?: string[];
+        /** @description Why the price may still move */
+        provisional?: string | null;
+        plans: {
+          [key: string]: "available" | "included" | "contract" | "none" | "minimum_one";
+        };
+        /**
+         * Format: date
+         * @description Your agreement's prices only: the first day this price applies
+         */
+        starts_on?: string | null;
+        /**
+         * Format: date
+         * @description Your agreement's prices only: the last day it applies; null to the end of the term
+         */
+        ends_on?: string | null;
+        /** @description Your agreement's prices only: the blocks bought, or the most accounts allowed */
+        value?: number | null;
+      }[];
+      included?: string[];
+      talk_to_sales_when?: {
+        running_accounts_over?: number;
+        estimate_usd_over?: components["schemas"]["BillingUsd"];
+        items?: string[];
+      } | null;
+      /** @description The next list version once it is released, with the date it starts and what changes */
+      next?: {
+        version?: string;
+        /** Format: date-time */
+        effective_from?: string;
+        changes?: {
+          key?: string;
+          monthly_usd?: components["schemas"]["BillingUsd"];
+        }[];
+      } | null;
+      /** Format: date-time */
+      as_of?: string;
+      /** @description Your own prices only (GET /billing/prices): the accounts the Standard prices tile reads. Absent from the public list */
+      accounts?: {
+        running_accounts: number;
+        paused_accounts: number;
+        /** @description The plan's running-account limit; null when it has none */
+        max_running_accounts: number | null;
+      } | null;
+    };
+    BillingInvoice: {
+      /** Format: uuid */
+      id: string;
+      /** @description Gap-free per year, e.g. INV-2026-1104 */
+      number: string;
+      /** Format: uuid */
+      billing_profile_id: string;
+      profile_name?: string;
+      period: string;
+      subtotal_usd?: components["schemas"]["BillingUsd"];
+      tax_usd?: components["schemas"]["BillingUsd"];
+      total_usd: components["schemas"]["BillingUsd"];
+      open_usd: components["schemas"]["BillingUsd"];
+      /** Format: date */
+      issued_on: string;
+      /** Format: date */
+      due_on: string;
+      /** @enum {string} */
+      state:
+        | "issued"
+        | "due"
+        | "overdue"
+        | "settlement_in_progress"
+        | "part_settled"
+        | "settled"
+        | "void";
+      overdue: boolean;
+      overdue_days?: number | null;
+      /**
+       * Format: date-time
+       * @description From the reminder: the first suspended moment if this stays unpaid
+       */
+      suspends_at?: string | null;
+      /**
+       * Format: date-time
+       * @description From the reminder: the last moment a payment avoids the suspension
+       */
+      pay_by?: string | null;
+      /** @description How it was paid; null while nothing is paid */
+      paid_by?: {
+        /** @enum {string} */
+        rail: "card" | "bank_transfer" | "mixed";
+        /** @description e.g. Bank transfer, receipt 8 Nov */
+        label: string;
+      } | null;
+      /** @description A void invoice: the invoice that replaced it */
+      replaced_by?: {
+        /** Format: uuid */
+        id: string;
+        number: string;
+      } | null;
+      pdf_url?: string | null;
+      usage_csv_url?: string | null;
+      /** @description Who paid it, when, and the receipt; null until it is settled */
+      settlement?: components["schemas"]["BillingInvoiceSettlement"] | null;
+    };
+    /** @description How a settled invoice was paid. When several payments settled it, `paid_at` and the receipt are the last payment's and `paid_by.rail` is mixed; every receipt is in the documents. */
+    BillingInvoiceSettlement: {
+      /**
+       * Format: date-time
+       * @description When the payment that settled it succeeded or was matched
+       */
+      paid_at: string;
+      paid_by: {
+        /** @enum {string} */
+        rail: "card" | "bank_transfer" | "mixed";
+        /** @description e.g. Visa ending 4242, or Bank transfer, 8 Nov */
+        label: string;
+      };
+      /** @description The receipt issued for that payment, e.g. RCT-2026-000123; null when the last part was written off rather than paid */
+      receipt_number: string | null;
+      /** @description The receipt in the documents list, as the document PDF route takes it; null with receipt_number */
+      receipt_document_id: string | null;
+      /** @description The portal member who paid the settling payment by card; null for a bank transfer or an automatic payment */
+      paid_by_person?: {
+        /** Format: uuid */
+        user_id: string;
+        name: string;
+      } | null;
+    };
+    BillingInvoicePage: {
+      items: components["schemas"]["BillingInvoice"][];
+      next_cursor: string | null;
+      /** @description How many items are in this page; not a total */
+      returned?: number;
+      /** @description Totals for the filtered set: the portal's tiles, and available to the tenant API on the same filters */
+      stats?: {
+        open?: number;
+        open_usd?: components["schemas"]["BillingUsd"];
+        overdue?: number;
+        overdue_usd?: components["schemas"]["BillingUsd"];
+        in_progress?: number;
+        in_progress_usd?: components["schemas"]["BillingUsd"];
+        due_in_7_days_usd?: components["schemas"]["BillingUsd"];
+        /** @description How many invoices due_in_7_days_usd sums */
+        due_in_7_days_count?: number;
+        settled_12m_usd?: components["schemas"]["BillingUsd"];
+        average_days_to_settle?: number | null;
+        /** Format: date */
+        next_invoice_on?: string | null;
+      };
+    };
+    /** @description One invoice with its lines summary, its tax, what is matched, how to pay and its history */
+    BillingInvoiceDetail: {
+      invoice: components["schemas"]["BillingInvoice"];
+      tax: {
+        /** @enum {string} */
+        rule: "gst_10" | "gst_free_export";
+        rate_pct: number;
+        tax_usd: components["schemas"]["BillingUsd"];
+      };
+      matched_usd: components["schemas"]["BillingUsd"];
+      lines_total: number;
+      /** @description One line per product, quantities in account-months or block-months */
+      summary?: {
+        key?: string;
+        quantity?: string;
+        unit?: string;
+        monthly_usd?: components["schemas"]["BillingUsd"];
+        amount_usd?: components["schemas"]["BillingUsd"];
+      }[];
+      pay_by_transfer?: {
+        account_name?: string;
+        currency?: string;
+        account_number?: string;
+        routing?: string;
+        swift?: string;
+        reference?: string;
+      } | null;
+      receipts?: {
+        /** Format: uuid */
+        id: string;
+        /** @description The file name as uploaded */
+        file: string;
+        /** @description Where the portal downloads it: /portal/v1/billing/invoices/{invoice_id}/receipts/{receipt_id}/file */
+        file_path: string;
+        amount_usd: components["schemas"]["BillingUsd"];
+        /** Format: date */
+        sent_on: string;
+        bank_reference?: string | null;
+        uploaded_by: {
+          /** Format: uuid */
+          user_id: string;
+          name: string;
+        };
+        /** @enum {string} */
+        state: "submitted" | "matched" | "rejected";
+        /** Format: date */
+        matched_on?: string | null;
+        /** @description Why it was rejected, as the customer reads it; null unless rejected */
+        reason?: string | null;
+      }[];
+      standing?: components["schemas"]["BillingStanding"];
+      history: {
+        /** Format: date-time */
+        at: string;
+        text: string;
+      }[];
+      /** @description The same as invoice.settlement: who paid it, when, and the receipt; null until it is settled */
+      settlement?: components["schemas"]["BillingInvoiceSettlement"] | null;
+    };
+    /** @description A card. Invoice is not a payment method: it is a mode of a billing profile (`BillingProfile.mode`). A card belongs to the organisation and is attached to profiles, each as its primary or its backup. A setup is complete when `state` becomes `active`; the portal polls `GET /portal/v1/billing/payment-methods/{method_id}` after the secure field. A method still `pending_setup` after `billing.payment_method.pending_setup_hours` (a setting, e.g. 24) is cancelled with its setup at the card processor and removed. Within that window a retry of the same setup answers the same pending method and re-confirms the same setup, never a second one. */
+    BillingPaymentMethod: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      kind: "card";
+      /** @description The profiles it pays for, and as what; empty when it is attached to none */
+      profiles: {
+        /** Format: uuid */
+        id: string;
+        /** @enum {string} */
+        role: "primary" | "backup";
+      }[];
+      added_by: {
+        /** Format: uuid */
+        user_id: string;
+        name: string;
+      };
+      /** @description e.g. Visa ending 4242 */
+      display: string;
+      expires?: string | null;
+      expiring_soon?: boolean;
+      chargeable: boolean;
+      /** @enum {string} */
+      state: "pending_setup" | "active" | "removed";
+      /** @description Only in the answer that starts a setup */
+      setup_client_secret?: string | null;
+    };
+    /** @description The Enterprise agreement in force: its number, term, renewal and how it pays. Where it is used it is null when none is in force, which is always the case on Standard. */
+    BillingAgreementRef: {
+      /** Format: uuid */
+      id: string;
+      /** @description e.g. AGR-2026-0003 */
+      number: string;
+      /** Format: date */
+      starts_on: string;
+      /**
+       * Format: date
+       * @description The last UTC day of the term
+       */
+      ends_on: string;
+      /** @description On: at the end of the term it runs again for a term of the same length, with the same entitlements and prices */
+      auto_renew: boolean;
+      /**
+       * @description How every billing profile of the organisation pays while the agreement is in force
+       * @enum {string}
+       */
+      payment_mode: "invoice" | "prepaid";
+    };
   };
   responses: {
     /** @description Accepted — asynchronous; progress via events */
@@ -7896,6 +10027,15 @@ export interface components {
         "application/json": components["schemas"]["Error"];
       };
     };
+    /** @description 402 `billing_payment_required`: a payment is missing on the billing profile the request falls under. At the reminder stage it comes only from a request that adds something billed (a new account, an add-on switched on). Once the stage is suspended it comes from writes that add or continue billed service on the tenant or the profile, such as orders, account changes and copy and risk settings; the operations that list this response are those writes. Writes that only cancel, close, retire, remove or pause are always allowed and never get it. A client maps it by its code, whatever the route. Not retryable unchanged: pay first. `details` names the tenant, the billing profile, the stage, the cause, since, the suspension date and the action. The amount and the invoice id are in the action only for a caller with billing permission. */
+    BillingPaymentRequired: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["BillingPaymentRequiredError"];
+      };
+    };
   };
   parameters: {
     terminalId: string;
@@ -7914,6 +10054,8 @@ export interface components {
     BudgetRemaining: number;
     /** @description `counted` when the number is a measurement, `configured` when it is the key's allowance, `unconfigured` when the key has none */
     BudgetSource: "counted" | "configured" | "unconfigured";
+    /** @description Sent on every answer while the organisation has a Service Agreement to accept: a plan change awaiting acceptance, or a version past or within its grace period. Absent otherwise. An SDK warns once when it first sees it; GET /tenant/service-agreement says what is due. */
+    ServiceAgreement: "due";
     /** @description Seconds to wait before retrying (429, and 503 dependency_unavailable) */
     RetryAfter: number;
   };
@@ -8164,6 +10306,7 @@ export interface operations {
           "application/json": components["schemas"]["AccountMdSubscription"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description state_error - an MT5 account (`details.reason` `not_on_this_venue`) */
       409: {
         headers: {
@@ -8296,6 +10439,7 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description execution_not_permitted - the account's runner may not execute orders */
       403: {
         headers: {
@@ -8365,6 +10509,7 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
       422: {
         headers: {
@@ -8397,6 +10542,7 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
       422: {
         headers: {
@@ -8498,6 +10644,7 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description state_error with details.reason not_on_this_venue - a cTrader account */
       409: {
         headers: {
@@ -8563,6 +10710,7 @@ export interface operations {
           "application/json": components["schemas"]["CtraderGrantStarted"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description feature_not_entitled: the tenant's plan does not include cTrader; venue_suspended: its cTrader is suspended or disabled */
       403: {
         headers: {
@@ -8624,6 +10772,55 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
+  getCtraderReturnOrigins: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CtraderReturnOrigins"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  setCtraderReturnOrigins: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CtraderReturnOriginsSet"];
+      };
+    };
+    responses: {
+      /** @description the list as stored */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CtraderReturnOrigins"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
   connectCtraderAccounts: {
     parameters: {
       query?: never;
@@ -8651,6 +10848,7 @@ export interface operations {
           "application/json": components["schemas"]["TradingAccountList"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -8721,6 +10919,7 @@ export interface operations {
           "application/json": components["schemas"]["TenantTerminal"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description `broker_not_supported` — MFX does not support this broker or this server now, and says why in words (`message` is the sentence the operator recorded). details: `{refused_by: permission | server_disabled, reason, broker_id, server_id}`. The SDK raises it as UnsupportedBrokerError. Other 409s (state_error, conflict) keep their codes. */
       409: {
         headers: {
@@ -8767,6 +10966,7 @@ export interface operations {
           "application/json": components["schemas"]["BulkAction"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -8923,6 +11123,7 @@ export interface operations {
           "application/json": components["schemas"]["TenantTerminal"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description no_room - details.fastest_that_fits */
       409: {
         headers: {
@@ -9017,6 +11218,7 @@ export interface operations {
           "application/json": components["schemas"]["TenantTerminal"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description state_error — the terminal is DRAINING or RETIRED and has no instruments to change */
       409: {
         headers: {
@@ -9095,6 +11297,7 @@ export interface operations {
           "application/json": components["schemas"]["TenantTerminal"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -9121,6 +11324,7 @@ export interface operations {
           "application/json": components["schemas"]["TenantTerminal"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -9151,6 +11355,7 @@ export interface operations {
           "application/json": components["schemas"]["OperationAccepted"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -9181,6 +11386,7 @@ export interface operations {
           "application/json": components["schemas"]["OperationAccepted"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -9239,6 +11445,7 @@ export interface operations {
           "application/json": components["schemas"]["ExpertAdvisorAttachment"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -9292,6 +11499,7 @@ export interface operations {
           "application/json": components["schemas"]["ExpertAdvisorParameters"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -9382,6 +11590,7 @@ export interface operations {
           "application/json": components["schemas"]["CredentialAccepted"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description no such terminal for this tenant — another tenant's id is never a 403 */
       404: {
         headers: {
@@ -9420,6 +11629,7 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description execution_not_permitted — the terminal's farm has no order_execution usage */
       403: {
         headers: {
@@ -9489,6 +11699,7 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
       422: {
         headers: {
@@ -9521,6 +11732,7 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description risk_refused - the entry breaks a Risk Management rule in force on the account; nothing was sent to the broker. details: reason, rule, policy_id, version, used, limit, would_be */
       422: {
         headers: {
@@ -9622,6 +11834,7 @@ export interface operations {
     };
     responses: {
       202: components["responses"]["CommandAccepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -9987,6 +12200,8 @@ export interface operations {
       query?: {
         server_id?: string;
         account_type?: string;
+        /** @description One of the tenant's own terminals to make the read. It must be ACTIVE. The symbol is read on that terminal's server, so a name that is on two servers of the broker needs no `server_id`; when `server_id` is also given it must be that terminal's server. The answer is then that terminal's own bid and ask, read through it and never a tick another terminal reported, and `source_terminal_id` is this id. Without it the platform chooses the terminal, as before. */
+        terminal_id?: string;
       };
       header?: never;
       path: {
@@ -10006,7 +12221,7 @@ export interface operations {
           "application/json": components["schemas"]["SymbolQuote"];
         };
       };
-      /** @description symbol not on this catalogue (details as getSymbol) */
+      /** @description symbol not on this catalogue (details as getSymbol), or `terminal_id` is not a terminal of this tenant */
       404: {
         headers: {
           [name: string]: unknown;
@@ -10015,7 +12230,7 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
-      /** @description no_terminal_on_server */
+      /** @description no_terminal_on_server; with `terminal_id`, `state_error` when that terminal is not ACTIVE, or is not under this broker or on the `server_id` given with it (details.reason `terminal_not_active` or `terminal_on_another_server`) */
       409: {
         headers: {
           [name: string]: unknown;
@@ -10085,6 +12300,7 @@ export interface operations {
           "application/json": components["schemas"]["MdSubscription"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -10096,6 +12312,87 @@ export interface operations {
         "Idempotency-Key": components["parameters"]["idempotencyKey"];
       };
       path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description stopped */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getServerSubscription: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The broker server's id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the subscription */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MdServerSubscription"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  putServerSubscription: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        /** @description The broker server's id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["MdServerSubscriptionPut"];
+      };
+    };
+    responses: {
+      /** @description the subscription as it is now */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MdServerSubscription"];
+        };
+      };
+      402: components["responses"]["BillingPaymentRequired"];
+      default: components["responses"]["Error"];
+    };
+  };
+  deleteServerSubscription: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        /** @description The broker server's id */
         id: string;
       };
       cookie?: never;
@@ -10270,6 +12567,203 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
+  getPriceList: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the price list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BillingPriceList"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getBilling: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the summary */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BillingSummary"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getBillingProfile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the profile */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BillingProfile"];
+        };
+      };
+      /** @description not_found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getBillingForecast: {
+    parameters: {
+      query?: {
+        /** @description YYYY-MM; this month by default. A past month gives its final figures */
+        month?: string;
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the month */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BillingForecast"];
+        };
+      };
+      /** @description not_found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getBillingPrices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the prices */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BillingPriceList"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listBillingInvoices: {
+    parameters: {
+      query?: {
+        billing_profile_id?: string;
+        /** @description one state, or several comma-separated */
+        state?: (
+          | "issued"
+          | "due"
+          | "overdue"
+          | "settlement_in_progress"
+          | "part_settled"
+          | "settled"
+          | "void"
+        )[];
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of invoices */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BillingInvoicePage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getBillingInvoice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the invoice */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BillingInvoiceDetail"];
+        };
+      };
+      /** @description not_found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
   listExpertAdvisors: {
     parameters: {
       query?: {
@@ -10328,6 +12822,7 @@ export interface operations {
           "application/json": components["schemas"]["TenantExpertAdvisor"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description conflict or quota_exceeded, as described above */
       409: {
         headers: {
@@ -10439,6 +12934,60 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
+  getExpertAdvisorParameterDefinitions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the definitions */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EaParameterDefinitions"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  putExpertAdvisorParameterDefinitions: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EaParameterDefinitionsPut"];
+      };
+    };
+    responses: {
+      /** @description the definitions as kept */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EaParameterDefinitions"];
+        };
+      };
+      402: components["responses"]["BillingPaymentRequired"];
+      default: components["responses"]["Error"];
+    };
+  };
   getTenantContacts: {
     parameters: {
       query?: never;
@@ -10455,6 +13004,58 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["OwnContacts"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getTenantServiceAgreement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description what is due */
+      200: {
+        headers: {
+          "MFX-Service-Agreement": components["headers"]["ServiceAgreement"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TenantServiceAgreement"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getCustody: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description data custody */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Custody"];
+        };
+      };
+      /** @description feature_not_entitled - data custody is Enterprise only (details.feature = data_custody) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
       default: components["responses"]["Error"];
@@ -10564,6 +13165,7 @@ export interface operations {
           "application/json": components["schemas"]["RiskPolicy"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -10643,6 +13245,7 @@ export interface operations {
           "application/json": components["schemas"]["RiskPolicyVersion"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -10695,6 +13298,33 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["RiskActivationResult"];
+        };
+      };
+      402: components["responses"]["BillingPaymentRequired"];
+      default: components["responses"]["Error"];
+    };
+  };
+  archiveRiskPolicy: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the policy, archived */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskPolicy"];
         };
       };
       default: components["responses"]["Error"];
@@ -10809,6 +13439,7 @@ export interface operations {
           "application/json": components["schemas"]["RiskAccount"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -10990,6 +13621,7 @@ export interface operations {
           "application/json": components["schemas"]["RiskPlan"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -11069,6 +13701,7 @@ export interface operations {
           "application/json": components["schemas"]["RiskPlan"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -11125,6 +13758,7 @@ export interface operations {
           "application/json": components["schemas"]["RiskPlan"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -11177,6 +13811,7 @@ export interface operations {
           "application/json": components["schemas"]["RiskChallenge"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -11223,6 +13858,33 @@ export interface operations {
     responses: {
       /** @description the challenge at its new version */
       201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskChallenge"];
+        };
+      };
+      402: components["responses"]["BillingPaymentRequired"];
+      default: components["responses"]["Error"];
+    };
+  };
+  archiveRiskChallenge: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the challenge, archived */
+      200: {
         headers: {
           [name: string]: unknown;
         };
@@ -11293,6 +13955,7 @@ export interface operations {
           "application/json": components["schemas"]["RiskActivationResult"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -11353,6 +14016,34 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
+  getRiskStops: {
+    parameters: {
+      query: {
+        /** @description The window's start, included */
+        from: string;
+        /** @description The window's end, excluded; after from and at most 366 days after it (400 validation_error otherwise) */
+        to: string;
+        /** @description Any of; repeat the parameter for several. An account the tenant does not hold matches nothing */
+        account_id?: string[];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the counts per account, accounts in id order */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RiskStops"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
   listCopyLeaders: {
     parameters: {
       query?: {
@@ -11406,6 +14097,7 @@ export interface operations {
           "application/json": components["schemas"]["CopyLeader"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description conflict - account_already_leads; quota_exceeded - plan_limit (details.limit) */
       409: {
         headers: {
@@ -11477,6 +14169,7 @@ export interface operations {
           "application/json": components["schemas"]["CopyLeader"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -11529,6 +14222,7 @@ export interface operations {
           "application/json": components["schemas"]["CopyLeader"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -11589,6 +14283,7 @@ export interface operations {
           "application/json": components["schemas"]["CopySignalAccepted"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description state_error - leader_not_external, or the leader is paused (an open) or retired; conflict - signal_id_reused; quota_exceeded - plan_limit */
       409: {
         headers: {
@@ -11620,6 +14315,10 @@ export interface operations {
         leader_id?: string;
         account_id?: string;
         group_id?: string;
+        /** @description newest: newest first. oldest: oldest first */
+        sort?: "newest" | "oldest";
+        /** @description true: only followers out of step (not unfollowed, newest drift above 0). false: only the others */
+        out_of_step?: boolean;
       };
       header?: never;
       path?: never;
@@ -11662,6 +14361,16 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      402: components["responses"]["BillingPaymentRequired"];
+      /** @description venue_suspended - the follower account's venue is DISABLED for this tenant, as Copy Trading reads it (a venue row retired or deleted reads DISABLED), so the follow is refused before anything is written; details.venue, details.state, details.since, details.reason. SUSPENDED refuses none of it: the mandate is signed close-only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
       /** @description conflict - already_following; state_error - the leader is retired; quota_exceeded - plan_limit (details.limit) */
@@ -11760,6 +14469,16 @@ export interface operations {
           "application/json": components["schemas"]["CopyFollower"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
+      /** @description venue_suspended - the follower account's venue is DISABLED for this tenant, as Copy Trading reads it (a venue row retired or deleted reads DISABLED), so an update that changes the mandate is refused before anything is written; details.venue, details.state, details.since, details.reason. SUSPENDED refuses none of it: the mandate is signed close-only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       /** @description unprocessable - not_on_this_venue (details.options), needs_leader_account */
       422: {
         headers: {
@@ -11821,6 +14540,16 @@ export interface operations {
           "application/json": components["schemas"]["CopyFollower"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
+      /** @description venue_suspended - the follower account's venue is DISABLED for this tenant, as Copy Trading reads it (a venue row retired or deleted reads DISABLED), so the resume is refused before anything is written; details.venue, details.state, details.since, details.reason. SUSPENDED refuses none of it: the mandate is signed close-only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       default: components["responses"]["Error"];
     };
   };
@@ -11847,6 +14576,7 @@ export interface operations {
           "application/json": components["schemas"]["CopyFollower"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -11875,6 +14605,63 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CopyFollower"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listCopyCloses: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        follower_id?: string;
+        leader_id?: string;
+        group_id?: string;
+        batch_id?: string;
+        /** @description one state, or several comma-separated */
+        state?: components["schemas"]["CopyCloseState"][];
+        /** @description defaults to 24 hours before to */
+        from?: string;
+        /** @description defaults to now; at most 31 days after from (422 window_too_wide) */
+        to?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of closes, the stats row first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyClosePage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  getCopyClose: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description the close */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyClose"];
         };
       };
       default: components["responses"]["Error"];
@@ -11935,6 +14722,16 @@ export interface operations {
           "application/json": components["schemas"]["CopyFollower"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
+      /** @description venue_suspended - the follower account's venue is DISABLED for this tenant, as Copy Trading reads it (a venue row retired or deleted reads DISABLED), so the reset is refused before anything is written; details.venue, details.state, details.since, details.reason. SUSPENDED refuses none of it: the mandate is signed close-only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       default: components["responses"]["Error"];
     };
   };
@@ -11960,6 +14757,8 @@ export interface operations {
         to?: string;
         /** @description created_at: newest first. mfx_ms: slowest of MFX Hub's part first */
         sort?: "created_at" | "mfx_ms";
+        /** @description the followers in this copy group now: a follower moved between groups shows its whole log under its current one. Another tenant's group matches no row */
+        group_id?: string;
       };
       header?: never;
       path?: never;
@@ -11974,6 +14773,80 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CopyLogPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listCopySignals: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        /** @description defaults to 24 hours before to */
+        from?: string;
+        /** @description defaults to now; at most 31 days after from (422 window_too_wide) */
+        to?: string;
+        leader_id?: string;
+        /** @description fill, external, or both comma-separated */
+        kind?: ("fill" | "external")[];
+        /** @description one action, or several comma-separated */
+        action?: (
+          | "open"
+          | "modify"
+          | "close"
+          | "close_part"
+          | "pending_place"
+          | "pending_modify"
+          | "pending_cancel"
+        )[];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of signals, the stats row first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopySignalPage"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  listTenantCopyStopouts: {
+    parameters: {
+      query?: {
+        cursor?: components["parameters"]["cursor"];
+        limit?: components["parameters"]["limit"];
+        /** @description defaults to 24 hours before to */
+        from?: string;
+        /** @description defaults to now; at most 31 days after from (422 window_too_wide) */
+        to?: string;
+        /** @description one state, or several comma-separated */
+        state?: components["schemas"]["CopyStopoutState"][];
+        follower_id?: string;
+        /** @description the followers in this copy group now */
+        group_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description a page of stop-outs, the stats row first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyTenantStopoutPage"];
         };
       };
       default: components["responses"]["Error"];
@@ -12029,6 +14902,7 @@ export interface operations {
           "application/json": components["schemas"]["CopyGroup"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -12082,6 +14956,7 @@ export interface operations {
           "application/json": components["schemas"]["CopyGroup"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -12112,6 +14987,7 @@ export interface operations {
           "application/json": components["schemas"]["CopyGroupMembersResult"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -12171,6 +15047,85 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
+  closeCopyGroup: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description A key is remembered for 24 hours per key-holder. The same key with an identical body returns the original answer with `duplicate: true`. The same key with a DIFFERENT body is 409 `conflict` with `details.reason = idempotency_key_reused` and `details.original_command_id`: silently answering a different order with the first order's result is the failure that loses money unnoticed. The body is compared as its canonical JSON, and the SDK does this for the caller. */
+        "Idempotency-Key": components["parameters"]["idempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyGroupClose"];
+      };
+    };
+    responses: {
+      /** @description the closes are asked; the group is paused if `pause` was true */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroupCloseResult"];
+        };
+      };
+      /** @description feature_not_entitled - copy groups are Enterprise only (details.part = groups) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
+  rolloverCopyGroup: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required unless dry_run is true. A key is remembered for 24 hours per key-holder: the same key with the same body answers the same results; with a different body it is 409 conflict with details.reason = idempotency_key_reused */
+        "Idempotency-Key"?: string;
+      };
+      path: {
+        id: components["parameters"]["pathId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CopyGroupRollover"];
+      };
+    };
+    responses: {
+      /** @description each member of the page, changed, unchanged or refused */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CopyGroupRolloverResult"];
+        };
+      };
+      402: components["responses"]["BillingPaymentRequired"];
+      /** @description feature_not_entitled - copy groups are Enterprise only (details.part = groups) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      default: components["responses"]["Error"];
+    };
+  };
   resumeCopyGroup: {
     parameters: {
       query?: never;
@@ -12194,6 +15149,7 @@ export interface operations {
           "application/json": components["schemas"]["CopyGroup"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       default: components["responses"]["Error"];
     };
   };
@@ -12272,6 +15228,7 @@ export interface operations {
           "application/json": components["schemas"]["WebhookEndpointCreated"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description quota_exceeded - webhooks.endpoints_per_tenant reached */
       409: {
         headers: {
@@ -12364,6 +15321,7 @@ export interface operations {
           "application/json": components["schemas"]["WebhookEndpoint"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description validation_error - as on create */
       422: {
         headers: {
@@ -12399,6 +15357,16 @@ export interface operations {
           "application/json": components["schemas"]["WebhookSecretRotated"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
+      /** @description conflict - details.reason idempotency_key_reused: this Idempotency-Key made the endpoint's latest rotation, so nothing is rotated again and the secret is not shown again; details.endpoint_id and details.previous_secret_until say which rotation it was. Use the secret from the first answer; if that answer was lost, rotate again with a new Idempotency-Key. The previous secret keeps signing until previous_secret_until */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       default: components["responses"]["Error"];
     };
   };
@@ -12420,6 +15388,17 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["WebhookTestAccepted"];
+        };
+      };
+      402: components["responses"]["BillingPaymentRequired"];
+      /** @description rate_limited - this endpoint was sent a test event less than 10 seconds ago; ask again after Retry-After. A call that is refused for another reason does not count */
+      429: {
+        headers: {
+          "Retry-After": components["headers"]["RetryAfter"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
       default: components["responses"]["Error"];
@@ -12480,9 +15459,20 @@ export interface operations {
           "application/json": components["schemas"]["WebhookReplayAccepted"];
         };
       };
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description cursor_too_old - details.oldest is the oldest cursor the stream holds */
       409: {
         headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description rate_limited - this endpoint was sent a replay less than 30 seconds ago; ask again after Retry-After. A call that is refused for another reason does not count */
+      429: {
+        headers: {
+          "Retry-After": components["headers"]["RetryAfter"];
           [name: string]: unknown;
         };
         content: {
@@ -12505,6 +15495,7 @@ export interface operations {
     requestBody?: never;
     responses: {
       202: components["responses"]["Accepted"];
+      402: components["responses"]["BillingPaymentRequired"];
       /** @description not available yet — reserved for a later release */
       501: {
         headers: {

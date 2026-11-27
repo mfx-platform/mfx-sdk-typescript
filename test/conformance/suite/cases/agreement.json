@@ -1,0 +1,416 @@
+[
+  {
+    "id": "agreement.not_accepted_names_the_plan_change_documents_and_accept_url",
+    "rule": "A terminal refused while a plan change awaits the new plan's Service Agreement is a ServiceAgreementNotAcceptedError that keeps the code and gives details.plan_change, details.documents and details.accept_url as sent; the write is not sent again",
+    "source": "Plan agreements",
+    "call": {
+      "op": "terminals.create",
+      "args": {
+        "farm_id": "1c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "broker_id": "2c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "server_id": "3c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "idempotency_key": "case-key-sa-1"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/terminals",
+          "headers": {
+            "Idempotency-Key": "case-key-sa-1"
+          }
+        },
+        "answer": {
+          "status": 409,
+          "headers": {
+            "MFX-Service-Agreement": "due"
+          },
+          "body": {
+            "error": {
+              "code": "service_agreement_not_accepted",
+              "message": "the Enterprise Service Agreement must be accepted before anything is added",
+              "details": {
+                "plan_change": {
+                  "$fixture": "plan_change"
+                },
+                "documents": [
+                  {
+                    "document": "service_agreement_enterprise",
+                    "number": 1,
+                    "plan": "enterprise",
+                    "grace_ends_at": null
+                  }
+                ],
+                "accept_url": "https://portal.mfxhub.com/organisation/legal"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "ServiceAgreementNotAcceptedError",
+      "fields": {
+        "code": "service_agreement_not_accepted",
+        "status": 409,
+        "details": {
+          "plan_change": {
+            "$fixture": "plan_change"
+          },
+          "documents": [
+            {
+              "document": "service_agreement_enterprise",
+              "number": 1,
+              "plan": "enterprise",
+              "grace_ends_at": null
+            }
+          ],
+          "accept_url": "https://portal.mfxhub.com/organisation/legal"
+        }
+      }
+    }
+  },
+  {
+    "id": "agreement.not_accepted_with_the_terms_due_is_the_service_agreement_error",
+    "rule": "Where the Terms are held too, the answer is service_agreement_not_accepted listing every document due, with no plan change (null): a ServiceAgreementNotAcceptedError, not a TermsNotAcceptedError",
+    "source": "Plan agreements",
+    "call": {
+      "op": "terminals.create",
+      "args": {
+        "farm_id": "1c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "broker_id": "2c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "server_id": "3c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "idempotency_key": "case-key-sa-2"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/terminals",
+          "headers": {
+            "Idempotency-Key": "case-key-sa-2"
+          }
+        },
+        "answer": {
+          "status": 409,
+          "headers": {
+            "MFX-Service-Agreement": "due"
+          },
+          "body": {
+            "error": {
+              "code": "service_agreement_not_accepted",
+              "message": "the Terms of Service and the Standard Service Agreement must be accepted before anything is added",
+              "details": {
+                "plan_change": null,
+                "documents": [
+                  {
+                    "document": "terms",
+                    "number": 3,
+                    "plan": null,
+                    "grace_ends_at": "2026-11-10T00:00:00Z"
+                  },
+                  {
+                    "document": "service_agreement_standard",
+                    "number": 2,
+                    "plan": "standard",
+                    "grace_ends_at": "2026-11-12T00:00:00Z"
+                  }
+                ],
+                "accept_url": "https://portal.mfxhub.com/organisation/legal"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "ServiceAgreementNotAcceptedError",
+      "fields": {
+        "code": "service_agreement_not_accepted",
+        "status": 409,
+        "details": {
+          "plan_change": null,
+          "documents": [
+            {
+              "document": "terms",
+              "number": 3,
+              "plan": null,
+              "grace_ends_at": "2026-11-10T00:00:00Z"
+            },
+            {
+              "document": "service_agreement_standard",
+              "number": 2,
+              "plan": "standard",
+              "grace_ends_at": "2026-11-12T00:00:00Z"
+            }
+          ],
+          "accept_url": "https://portal.mfxhub.com/organisation/legal"
+        }
+      }
+    }
+  },
+  {
+    "id": "agreement.terms_not_accepted_names_the_documents",
+    "rule": "A terminal refused while a Terms version is past its grace period unaccepted is a TermsNotAcceptedError that keeps the code and gives details.documents as sent",
+    "source": "Plan agreements",
+    "call": {
+      "op": "terminals.create",
+      "args": {
+        "farm_id": "1c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "broker_id": "2c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "server_id": "3c2d3e4f-5a6b-7c8d-9e0f-102030405060",
+        "idempotency_key": "case-key-terms-1"
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "POST",
+          "path": "/v1/terminals",
+          "headers": {
+            "Idempotency-Key": "case-key-terms-1"
+          }
+        },
+        "answer": {
+          "status": 409,
+          "headers": {
+            "MFX-Service-Agreement": "due"
+          },
+          "body": {
+            "error": {
+              "code": "terms_not_accepted",
+              "message": "the Terms of Service must be accepted before anything is added",
+              "details": {
+                "documents": [
+                  {
+                    "document": "terms",
+                    "number": 3,
+                    "grace_ends_at": "2026-11-10T00:00:00Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    ],
+    "observe": {
+      "raises": "TermsNotAcceptedError",
+      "fields": {
+        "code": "terms_not_accepted",
+        "status": 409,
+        "details": {
+          "documents": [
+            {
+              "document": "terms",
+              "number": 3,
+              "grace_ends_at": "2026-11-10T00:00:00Z"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "agreement.service_agreement_reads_what_is_due",
+    "rule": "tenant.service_agreement() reads GET /v1/tenant/service-agreement and returns what is due, whether additions are held, the plan in force, the plan change, every document due and accept_url",
+    "source": "Plan agreements",
+    "call": {
+      "op": "tenant.service_agreement",
+      "args": {}
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/tenant/service-agreement"
+        },
+        "answer": {
+          "status": 200,
+          "headers": {
+            "MFX-Service-Agreement": "due"
+          },
+          "body": {
+            "due": true,
+            "held": true,
+            "plan": "standard",
+            "plan_change": {
+              "$fixture": "plan_change"
+            },
+            "documents": [
+              {
+                "document": "service_agreement_enterprise",
+                "number": 1,
+                "plan": "enterprise",
+                "grace_ends_at": null,
+                "held": true
+              }
+            ],
+            "accept_url": "https://portal.mfxhub.com/organisation/legal"
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "due": true,
+        "held": true,
+        "plan": "standard",
+        "plan_change_state": "awaiting_acceptance",
+        "plan_change_to": "enterprise",
+        "documents": [
+          "service_agreement_enterprise"
+        ],
+        "accept_url": "https://portal.mfxhub.com/organisation/legal"
+      }
+    }
+  },
+  {
+    "id": "agreement.service_agreement_nothing_due",
+    "rule": "With nothing due, tenant.service_agreement() returns due and held false, no plan change and no documents",
+    "source": "Plan agreements",
+    "call": {
+      "op": "tenant.service_agreement",
+      "args": {}
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/tenant/service-agreement"
+        },
+        "answer": {
+          "status": 200,
+          "headers": {},
+          "body": {
+            "due": false,
+            "held": false,
+            "plan": "enterprise",
+            "plan_change": null,
+            "documents": [],
+            "accept_url": "https://portal.mfxhub.com/organisation/legal"
+          }
+        }
+      }
+    ],
+    "observe": {
+      "returns": {
+        "due": false,
+        "held": false,
+        "plan": "enterprise",
+        "plan_change_state": null,
+        "plan_change_to": null,
+        "documents": [],
+        "accept_url": "https://portal.mfxhub.com/organisation/legal"
+      }
+    }
+  },
+  {
+    "id": "agreement.due_header_warns_once_per_client",
+    "rule": "A client that sees MFX-Service-Agreement: due logs one warning the first time, not one per answer: three answers carrying it are one warning",
+    "source": "Plan agreements",
+    "call": {
+      "op": "agreement.due_warnings",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001",
+        "clients": 1,
+        "calls": 3
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 200,
+          "headers": {
+            "MFX-Service-Agreement": "due"
+          },
+          "body": {
+            "$fixture": "terminal"
+          }
+        },
+        "times": 3
+      }
+    ],
+    "observe": {
+      "returns": {
+        "warnings": 1
+      }
+    }
+  },
+  {
+    "id": "agreement.due_header_warns_once_in_each_client",
+    "rule": "The warning is once per client: two clients that each see MFX-Service-Agreement: due twice log one warning each, two in all",
+    "source": "Plan agreements",
+    "call": {
+      "op": "agreement.due_warnings",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001",
+        "clients": 2,
+        "calls": 2
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 200,
+          "headers": {
+            "MFX-Service-Agreement": "due"
+          },
+          "body": {
+            "$fixture": "terminal"
+          }
+        },
+        "times": 4
+      }
+    ],
+    "observe": {
+      "returns": {
+        "warnings": 2
+      }
+    }
+  },
+  {
+    "id": "agreement.no_header_no_warning",
+    "rule": "Answers without MFX-Service-Agreement log no warning that a Service Agreement is due",
+    "source": "Plan agreements",
+    "call": {
+      "op": "agreement.due_warnings",
+      "args": {
+        "terminal_id": "0191f0c2-aaaa-7bbb-8ccc-000000000001",
+        "clients": 1,
+        "calls": 2
+      }
+    },
+    "server": [
+      {
+        "expect": {
+          "method": "GET",
+          "path": "/v1/terminals/0191f0c2-aaaa-7bbb-8ccc-000000000001"
+        },
+        "answer": {
+          "status": 200,
+          "headers": {},
+          "body": {
+            "$fixture": "terminal"
+          }
+        },
+        "times": 2
+      }
+    ],
+    "observe": {
+      "returns": {
+        "warnings": 0
+      }
+    }
+  }
+]
